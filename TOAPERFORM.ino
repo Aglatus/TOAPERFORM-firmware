@@ -131,6 +131,15 @@ void loop() {
     Serial.println(debugTimeBuf);
 
     for (int i = 0; i < HR_SLOTS; i++) {
+      // RR-interval/RMSSD (bkz. Config.h HR_RR_BUFFER_SIZE notu) - oyuncu
+      // atanmasindan bagimsiz, salt donanimdan gelen bir deger.
+      hrRrSupported[i] = heartRateHardware.rrSupported(i);
+      if (hrRrSupported[i]) {
+        uint16_t rrBuf[HR_RR_BUFFER_SIZE];
+        int rrCount = heartRateHardware.rrIntervals(i, rrBuf, HR_RR_BUFFER_SIZE);
+        hrRmssdMs[i] = PlayerMath::calculateRmssd(rrBuf, rrCount);
+      }
+
       // Atanmamis slotlarda da BPM okunur/gosterilir (bkz. HeartRateHardware),
       // ama kisisel rekor olmadan yuzde/bolge/yorgunluk hesaplanamaz - bu
       // yuzden asagidaki blok, atanmamis slotu 0'da/NORMAL'de tutar.

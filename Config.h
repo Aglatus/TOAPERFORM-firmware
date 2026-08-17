@@ -100,6 +100,22 @@ static const unsigned long HR_STALE_TIMEOUT_MS = 2000;
 // gorsel kontrolle birlikte kullanilmali.
 static const unsigned long HR_STUCK_TIMEOUT_MS = 8000;
 
+// ---------------- RR-Interval / HRV (RMSSD) ----------------
+// BLE Heart Rate Measurement karakteristiginde (0x2A37) RR-interval alani
+// OPSIYONELDIR (Flags biti 4) - cihaz gondermeyebilir. Polar Sense'in bu
+// yayin modunda gonderip gondermedigi HENUZ SAHADA DOGRULANMADI (bkz.
+// HeartRateHardware.cpp SAHA BULGUSU notlariyla ayni belirsizlik turu -
+// contactSupported de benzer sekilde bu moddan hic gelmiyordu).
+//
+// ONEMLI METODOLOJIK SINIR: burada hesaplanan RMSSD, oyuncu HAREKET
+// HALINDEYKEN (kosarken/antrenmandayken) surekli guncellenir - bu, HRV
+// literaturundeki standart "dinlenme/toparlanma HRV'si" (sabah, 60-120sn
+// hareketsiz olcum) ile AYNI SEY DEGILDIR. Egzersiz sirasinda RR degiskenligi
+// solunum ve efor tarafindan domine edilir, otonom toparlanma durumunu
+// yansitmaz. Bu deger sadece ANLIK/gostergesel bir metrik olarak sunulmali -
+// panelde bu net belirtilmeli, "toparlanma skoru" gibi sunulmamali.
+static const int HR_RR_BUFFER_SIZE = 40;  // slot basina tutulan son RR degeri sayisi (~halka tampon)
+
 // ---------------- Nabiz - Coklu Bant Destegi ----------------
 // Ayni ESP32 en fazla HR_DEVICE_SLOTS (=HeartRateHardware::SLOT_COUNT, bkz.
 // HeartRateHardware.h - IKI SABIT AYNI KALMALI) nabiz sensorune AYNI ANDA
@@ -197,3 +213,21 @@ static const float HR_ZONE2_MIN_PCT = 60.0f;  // hafif / yag yakimi
 static const float HR_ZONE3_MIN_PCT = 70.0f;  // orta / aerobik gelisim
 static const float HR_ZONE4_MIN_PCT = 80.0f;  // esik / anaerobik
 static const float HR_ZONE5_MIN_PCT = 90.0f;  // maksimal efor
+
+// ---------------- ACWR (Akut:Kronik Is Yuku Orani) / Monotonluk - Roster ----------------
+// Kaynak: Williams S ve ark., Br J Sports Med 2016; Murray NB, Gabbett TJ ve
+// ark., Br J Sports Med 2017 (ACWR-EWMA). Antrenman Monotonlugu/Zorlanmasi:
+// Foster C ve ark., J Strength Cond Res 2001. lambda_akut = 2/(7+1),
+// lambda_kronik = 2/(28+1). Bu, eski (GPS'li) TOAPERFORM_BLE_TEST surumunde
+// zaten calisan/PC'de test edilmis bir hesap - buraya (roster'a, HER OYUNCU
+// icin AYRI) tasindi (bkz. PlayerMath::calculateAcwr, RosterStore::acwrForPlayer).
+//
+// ESP32'de gercek zaman (RTC/NTP) YOK - cihaz internete cikmiyor. "Bugun"un
+// gun-indeksi (epoch saniye / 86400) telefonun tarayicisindan periyodik olarak
+// gelen 'ts' parametresinden (bkz. WebRoutes.cpp) tahmin edilir - kesin degil
+// ama antrenman gunlerini ayirt etmek icin yeterli hassasiyette.
+static const float ACWR_LAMBDA_ACUTE = 2.0f / (7.0f + 1.0f);
+static const float ACWR_LAMBDA_CHRONIC = 2.0f / (28.0f + 1.0f);
+static const long ACWR_MAX_LOOKBACK_DAYS = 42;  // 28g kronik pencere + isinma payi
+static const char* const LOADS_FILE = "/loads.dat";  // her oyuncunun tarihli gunluk yuku (CSV: playerId,dayIndex,load)
+static const int MAX_LOAD_ENTRIES_PER_PLAYER = 50;   // ACWR_MAX_LOOKBACK_DAYS + pay - okurken RAM'de tutulan tavan

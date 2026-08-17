@@ -35,12 +35,20 @@ static void handleGpsConfig() {
 }
 
 static void handleData() {
+  // Panel her /data cagrisinda telefonun GERCEK saatini (epoch saniye) yollar -
+  // ESP32'nin RTC'si yok, ACWR'nin "bugun"u bu sekilde tahmin edilir (bkz.
+  // Globals.h updateEpochSync/currentDayIndex).
+  if (server.hasArg("ts")) {
+    updateEpochSync(strtoul(server.arg("ts").c_str(), nullptr, 10));
+  }
+  long today = currentDayIndex();
+
   char timeBuf[16];
   formatTime(sessionSeconds, timeBuf, sizeof(timeBuf));
 
-  // ~450 bayt/slot (isim+uyari+ongoru metinleri dahil en kotu durum) x HR_SLOTS
-  // + sarici icin genis bir pay - bkz. SLOT_COUNT (Config.h/HeartRateHardware.h).
-  static char json[HR_SLOTS * 500 + 64];
+  // ~550 bayt/slot (isim+uyari+ongoru+ACWR metinleri dahil en kotu durum) x
+  // HR_SLOTS + sarici icin genis bir pay - bkz. SLOT_COUNT (Config.h/HeartRateHardware.h).
+  static char json[HR_SLOTS * 600 + 64];
   int off = 0;
   off += snprintf(json + off, sizeof(json) - off, "{\"trainingTime\":\"%s\",\"slots\":[", timeBuf);
 
@@ -67,12 +75,19 @@ static void handleData() {
         "Bu tempoyla ~%d dakika icinde KRITIK seviyeye ulasilabilir", fatigueTrend[i].etaMinutes());
     }
 
+    // ACWR: "bugun" bilinmiyorsa (henuz telefon senkron olmadiysa) ya da oyuncu
+    // atanmamissa hesaplanmaz - varsayilan (yetersiz veri) bandiyla gonderilir.
+    PlayerMath::AcwrResult acwr;
+    if (hasPlayer && today >= 0) acwr = rosterStore.acwrForPlayer(slotPlayerId[i], today);
+
     off += snprintf(json + off, sizeof(json) - off,
       "%s{\"slot\":%d,\"bandLabel\":\"%s\",\"enabled\":%s,"
       "\"playerId\":%d,\"playerName\":\"%s\",\"baselineReady\":%s,"
       "\"bpm\":%d,\"connected\":%s,\"contact\":%s,\"fresh\":%s,\"status\":\"%s\","
       "\"pctMax\":%.0f,\"zone\":%d,\"zoneSec\":[%lu,%lu,%lu,%lu,%lu],"
-      "\"fatigue\":%d,\"riskStatus\":\"%s\",\"riskColor\":\"%s\",\"warning\":\"%s\",\"trendWarning\":\"%s\"}",
+      "\"fatigue\":%d,\"riskStatus\":\"%s\",\"riskColor\":\"%s\",\"warning\":\"%s\",\"trendWarning\":\"%s\","
+      "\"acwr\":%.2f,\"acwrBand\":\"%s\",\"acwrDays\":%d,\"monotony\":%.2f,\"monotonyBand\":\"%s\","
+      "\"rrSupported\":%s,\"rmssd\":%.1f}",
       i == 0 ? "" : ",",
       i, heartRateHardware.label(i), enabled ? "true" : "false",
       slotPlayerId[i], hasPlayer ? slotPlayerName[i] : "", baselineReady ? "true" : "false",
@@ -80,7 +95,9 @@ static void handleData() {
       heartRateContact[i] ? "true" : "false", heartRateSignalFresh[i] ? "true" : "false", hrStatus,
       hrPctOfMax[i], hrZoneNow[i],
       hrZoneSeconds[i][0], hrZoneSeconds[i][1], hrZoneSeconds[i][2], hrZoneSeconds[i][3], hrZoneSeconds[i][4],
-      fatigueScore[i], riskStatus[i], riskColor[i], lastWarning[i], trendWarning
+      fatigueScore[i], riskStatus[i], riskColor[i], lastWarning[i], trendWarning,
+      acwr.acwr, acwr.band, acwr.daysWithData, acwr.monotony, acwr.monotonyBand,
+      hrRrSupported[i] ? "true" : "false", hrRmssdMs[i]
     );
   }
 
@@ -167,6 +184,7 @@ static void handleReset() {
   if (server.hasArg("ts")) {
     sessionTs = strtoul(server.arg("ts").c_str(), nullptr, 10);
   }
+  updateEpochSync(sessionTs);
 
   int rpe = 0;
   if (server.hasArg("rpe")) {
@@ -190,6 +208,13 @@ static void handleReset() {
         ? (sessionMinutes * (fatigueScore[i] / 10.0f))
         : (sessionMinutes * rpe);
       rosterStore.updateAfterSession(slotPlayerId[i], sessionLoad, sessionMaxHr[i]);
+
+      // ACWR icin: bu antrenmanin yukunu o oyuncunun GUNLUK toplamina ekler
+      // (bkz. Config.h ACWR notu). sessionTs yoksa (telefon saatini hic
+      // gondermediyse) gun-indeksi bilinmez, atlanir.
+      if (sessionTs > 0) {
+        rosterStore.recordDailyLoad(slotPlayerId[i], (long)(sessionTs / 86400UL), sessionLoad);
+      }
     }
   }
 

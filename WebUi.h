@@ -442,6 +442,21 @@ function slotCardHtml(slot){
         <div class="value" id="hrZoneLabel${slot}">--</div>
         <div class="zone-badge" id="hrZoneBadge${slot}">--</div>
       </div>
+      <div class="card">
+        <div class="label">ACWR (Akut:Kronik Yuk)</div>
+        <div class="value"><span id="acwrValue${slot}">--</span></div>
+        <div class="legend-chip" id="acwrBand${slot}" style="margin-top:6px;color:var(--muted-light)">Yetersiz veri</div>
+      </div>
+      <div class="card">
+        <div class="label">Antrenman Monotonlugu</div>
+        <div class="value"><span id="monotonyValue${slot}">--</span></div>
+        <div class="legend-chip" id="monotonyBand${slot}" style="margin-top:6px;color:var(--muted-light)">Yetersiz veri</div>
+      </div>
+      <div class="card" id="rmssdCard${slot}" style="display:none">
+        <div class="label">RMSSD (anlik, HRV)</div>
+        <div class="value"><span id="rmssdValue${slot}">--</span> <span class="unit">ms</span></div>
+        <div class="legend-chip" style="margin-top:6px;color:var(--muted-light)">Hareket halinde - dinlenme HRV'si degil</div>
+      </div>
       <div class="card big">
         <div class="label">Nabiz Bolgeleri (bu oturum)</div>
         <div class="stackbar" style="margin-top:10px">
@@ -528,6 +543,20 @@ function renderSlot(slot, s){
   document.getElementById('hrPctMax'+slot).innerText = s.fresh && s.pctMax > 0 ? s.pctMax.toFixed(0) : '--';
   renderHrZones(slot, s.fresh ? s.zone : 0, s.zoneSec);
 
+  // ACWR/Monotonluk: acwrDays 3'un altindaysa (bkz. PlayerMath::calculateAcwr)
+  // sunucu zaten "Yetersiz veri" bandiyla donuyor - burada sadece gosteriyoruz.
+  document.getElementById('acwrValue'+slot).innerText = s.acwrDays >= 3 ? s.acwr.toFixed(2) : '--';
+  document.getElementById('acwrBand'+slot).innerText = s.acwrBand;
+  document.getElementById('monotonyValue'+slot).innerText = s.acwrDays >= 3 ? s.monotony.toFixed(2) : '--';
+  document.getElementById('monotonyBand'+slot).innerText = s.monotonyBand;
+
+  // RMSSD karti sadece cihaz/mod bu veriyi GERCEKTEN gonderiyorsa gorunur -
+  // Polar Sense bu yayin modunda gondermeyebilir (bkz. Config.h notu).
+  document.getElementById('rmssdCard'+slot).style.display = s.rrSupported ? '' : 'none';
+  if (s.rrSupported) {
+    document.getElementById('rmssdValue'+slot).innerText = s.fresh ? s.rmssd.toFixed(0) : '--';
+  }
+
   // Sunucudaki mevcut atamayla dropdown'u senkron tutar (baska bir cihaz/
   // sekmeden atama degistiyse de burada gorunur). Kullanici o an secim
   // yapiyorsa (odakta) dokunmaz.
@@ -540,7 +569,9 @@ function renderSlot(slot, s){
 // degil) - panelde SADECE enabled=true olan slotlar icin kart olusturulur
 // (bkz. buildSlotDom), digerleri hic gorunmez/DOM'a girmez.
 function loadData(){
- fetch('/data')
+ // 'ts': telefonun GERCEK epoch saniyesi - ESP32'nin RTC'si yok, ACWR'nin
+ // "bugun"unu bu sekilde tahmin ediyor (bkz. Globals.h updateEpochSync).
+ fetch('/data?ts=' + Math.floor(Date.now()/1000))
  .then(r=>r.json())
  .then(d=>{
    document.getElementById('trainingTime').innerText = d.trainingTime;

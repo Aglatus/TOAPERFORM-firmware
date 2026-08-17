@@ -34,7 +34,25 @@ char riskColor[HR_SLOTS][9];
 char lastWarning[HR_SLOTS][96];
 unsigned long warningUntilMs[HR_SLOTS];
 
+float hrRmssdMs[HR_SLOTS];
+bool hrRrSupported[HR_SLOTS];
+
 unsigned long lastPeerBroadcastMs = 0;
+
+unsigned long lastKnownEpochSec = 0;
+unsigned long lastKnownEpochAtMs = 0;
+
+void updateEpochSync(unsigned long epochSec) {
+  if (epochSec == 0) return;
+  lastKnownEpochSec = epochSec;
+  lastKnownEpochAtMs = millis();
+}
+
+long currentDayIndex() {
+  if (lastKnownEpochSec == 0) return -1;
+  unsigned long estimatedEpoch = lastKnownEpochSec + (millis() - lastKnownEpochAtMs) / 1000UL;
+  return (long)(estimatedEpoch / 86400UL);
+}
 
 void formatTime(unsigned long sec, char* out, size_t outSize) {
   unsigned long h = sec / 3600;

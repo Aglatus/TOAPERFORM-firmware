@@ -51,6 +51,67 @@ void RosterStore::updateAfterSession(int id, float sessionLoad, float sessionMax
   saveAll();
 }
 
+// LOADS_FILE satir bicimi: playerId,dayIndex,load - TUM oyuncular icin ORTAK
+// tek dosya (30 oyuncu x ~42 gun bile kucuk kalir, ayri dosya acmaya gerek yok).
+void RosterStore::recordDailyLoad(int id, long dayIndex, float load) {
+  File f = LittleFS.open(LOADS_FILE, "a");
+  if (f) {
+    char buf[48];
+    snprintf(buf, sizeof(buf), "%d,%ld,%.2f", id, dayIndex, load);
+    f.println(buf);
+    f.close();
+  }
+
+  // ACWR_MAX_LOOKBACK_DAYS'ten eski kayitlari buda - dosya sinirsiz buyumesin
+  // (bkz. SeasonStore::trimHistoryIfNeeded ile ayni desen).
+  File src = LittleFS.open(LOADS_FILE, "r");
+  if (!src) return;
+
+  File tmp = LittleFS.open("/loads.tmp", "w");
+  if (!tmp) { src.close(); return; }
+
+  char lineBuf[48];
+  long cutoff = dayIndex - ACWR_MAX_LOOKBACK_DAYS;
+  while (readLineToBuffer(src, lineBuf, sizeof(lineBuf))) {
+    if (strlen(lineBuf) == 0) continue;
+    int lineId;
+    long lineDay;
+    float lineLoad;
+    if (sscanf(lineBuf, "%d,%ld,%f", &lineId, &lineDay, &lineLoad) != 3) continue;
+    if (lineDay < cutoff) continue;  // eski kaydi atla (buda)
+    tmp.println(lineBuf);
+  }
+  src.close();
+  tmp.close();
+
+  LittleFS.remove(LOADS_FILE);
+  LittleFS.rename("/loads.tmp", LOADS_FILE);
+}
+
+PlayerMath::AcwrResult RosterStore::acwrForPlayer(int id, long todayIdx) const {
+  PlayerMath::DayLoad entries[MAX_LOAD_ENTRIES_PER_PLAYER];
+  int entryCount = 0;
+
+  File f = LittleFS.open(LOADS_FILE, "r");
+  if (f) {
+    char lineBuf[48];
+    while (entryCount < MAX_LOAD_ENTRIES_PER_PLAYER && readLineToBuffer(f, lineBuf, sizeof(lineBuf))) {
+      if (strlen(lineBuf) == 0) continue;
+      int lineId;
+      long lineDay;
+      float lineLoad;
+      if (sscanf(lineBuf, "%d,%ld,%f", &lineId, &lineDay, &lineLoad) != 3) continue;
+      if (lineId != id) continue;
+      entries[entryCount].dayIndex = lineDay;
+      entries[entryCount].load = lineLoad;
+      entryCount++;
+    }
+    f.close();
+  }
+
+  return PlayerMath::calculateAcwr(entries, entryCount, todayIdx);
+}
+
 void RosterStore::load() {
   count_ = 0;
   nextId_ = 1;

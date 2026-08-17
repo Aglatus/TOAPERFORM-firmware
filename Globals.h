@@ -71,7 +71,23 @@ extern char riskColor[HR_SLOTS][9];
 extern char lastWarning[HR_SLOTS][96];
 extern unsigned long warningUntilMs[HR_SLOTS];
 
+// RR-interval/RMSSD (bkz. Config.h HR_RR_BUFFER_SIZE, HeartRateHardware.h,
+// PlayerMath::calculateRmssd notlari). rrSupported[i]=false ise cihaz/mod bu
+// veriyi hic gondermiyor demektir - panelde tamamen gizlenmeli.
+extern float hrRmssdMs[HR_SLOTS];
+extern bool hrRrSupported[HR_SLOTS];
+
 extern unsigned long lastPeerBroadcastMs;  // ESP-NOW takim yayini icin son yayin zamani
+
+// ---------------- "Bugun" tahmini (ACWR icin, bkz. Config.h ACWR notu) ----------------
+// ESP32'de RTC/NTP yok - telefonun tarayicisi periyodik olarak GERCEK epoch
+// saniyeyi ('ts' parametresiyle) gonderir, cihaz bunu alip millis() farkiyla
+// ileri tasir. Hic senkron olmadiysa lastKnownEpochSec == 0 kalir.
+extern unsigned long lastKnownEpochSec;
+extern unsigned long lastKnownEpochAtMs;
+void updateEpochSync(unsigned long epochSec);
+// -1 = henuz hic senkron olmadi (ACWR gosterilmemeli).
+long currentDayIndex();
 
 // slot: HR_SLOTS araliginda olmali.
 void setWarning(int slot, const char* msg, unsigned long durationMs);

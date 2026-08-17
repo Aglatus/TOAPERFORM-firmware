@@ -8,6 +8,7 @@
 // (kisisel sprint/tempo esikleri, metabolik guc), ACWR/Monotonluk ve
 // Oyuncu Karti/Yetenek/Gelisim puanlamasi kullanici talebiyle kaldirildi.
 // =====================================================
+#include <stdint.h>
 #include "Config.h"
 
 namespace PlayerMath {
@@ -58,5 +59,41 @@ private:
 // esiginin altinda (dinlenme/isinma sayilir, hicbir bolgeye eklenmez), 1-5 =
 // Z1..Z5 (bkz. Config.h HR_ZONEn_MIN_PCT).
 int hrZoneFromPercent(float pctOfPersonalMax);
+
+// ---------------- ACWR (Akut:Kronik Is Yuku Orani) - EWMA ----------------
+// Kaynak: Williams S ve ark., Br J Sports Med 2016; Murray NB, Gabbett TJ ve
+// ark., Br J Sports Med 2017. Antrenman Monotonlugu/Zorlanmasi: Foster C ve
+// ark., J Strength Cond Res 2001.
+struct DayLoad {
+  long dayIndex = 0;
+  float load = 0;
+};
+
+struct AcwrResult {
+  float ewmaAcute = 0;
+  float ewmaChronic = 0;
+  float acwr = 0;
+  int daysWithData = 0;
+  const char* band = "Yetersiz veri";
+  float monotony = 0;
+  float strain = 0;
+  const char* monotonyBand = "Yetersiz veri";
+};
+
+// entries: gunluk toplam yuk kayitlari (siralamasi onemli degil, ayni gun
+// icin birden fazla kayit olabilir - toplanir).
+// todayIdx: bugunun gun-index'i (epoch saniye / 86400).
+AcwrResult calculateAcwr(const DayLoad* entries, int entryCount, long todayIdx);
+
+// ---------------- RMSSD (RR-interval tabanli, zaman-alani HRV metrigi) ----------------
+// RMSSD = ardisik RR araliklari farklarinin kareler ortalamasinin karekoku.
+// Standart, hesaplama olarak hafif (FFT gerektirmez) bir zaman-alani HRV
+// metrigi. ONEMLI: bu fonksiyon SAF matematiktir, girdinin HAREKET HALINDE mi
+// yoksa DINLENME HALINDE mi toplandigini bilmez/umursamaz - o ayrimi caller
+// yapmali (bkz. Config.h HR_RR_BUFFER_SIZE / HeartRateHardware.h notlari:
+// egzersiz sirasinda RMSSD "toparlanma HRV'si" ANLAMINA GELMEZ, sadece anlik
+// bir gostergedir).
+// rrMs: ardisik (zaman sirali) RR araliklari, milisaniye. count < 2 ise 0 doner.
+float calculateRmssd(const uint16_t* rrMs, int count);
 
 }  // namespace PlayerMath

@@ -30,6 +30,13 @@ struct HrSlot {
   volatile unsigned long lastSampleMs = 0;
   volatile int lastDistinctBpm = -1;
   volatile unsigned long lastChangeMs = 0;
+
+  // RR-interval halka tamponu (bkz. Config.h HR_RR_BUFFER_SIZE notu) - opsiyonel
+  // alan, cihaz hic gondermeyebilir. rrHead: bir SONRAKI yazilacak index.
+  volatile uint16_t rrBufferMs[HR_RR_BUFFER_SIZE] = {};
+  volatile int rrHead = 0;
+  volatile int rrFilled = 0;
+  volatile bool rrEverSeen = false;
 };
 
 static HrSlot s_slots[HeartRateHardware::SLOT_COUNT];
@@ -63,8 +70,10 @@ static bool s_needRescan = false;
 // ---------------- Nabiz olcumu ayristirma (BLE HR profili, GATT spec) ----------------
 // Flags byte (data[0]): bit0 = deger formati (0=uint8, 1=uint16), bit1 = sensor
 // temas algilandi mi, bit2 = temas bilgisi destekleniyor mu, bit3 = enerji
-// harcamasi alani var mi, bit4 = RR-interval alani var mi (HRV icin - su an
-// kullanilmiyor, gelecekte eklenebilir).
+// harcamasi alani var mi (varsa 2 bayt, atlanir - kullanilmiyor), bit4 =
+// RR-interval alani var mi (varsa kalan tum veri, 2'ser baytlik uint16'lar
+// halinde, her biri 1/1024 saniye biriminde bir RR araligi - bkz. Config.h
+// HR_RR_BUFFER_SIZE / HeartRateHardware.h notlari).
 static void parseHrMeasurement(int slot, const uint8_t* data, size_t length) {
   if (length < 2) return;
 
@@ -72,13 +81,18 @@ static void parseHrMeasurement(int slot, const uint8_t* data, size_t length) {
   bool is16bit = flags & 0x01;
   bool contactSupported = flags & 0x04;
   bool contactDetected = flags & 0x02;
+  bool energyPresent = flags & 0x08;
+  bool rrPresent = flags & 0x10;
 
   int bpm;
+  size_t idx;
   if (is16bit) {
     if (length < 3) return;
     bpm = data[1] | (data[2] << 8);
+    idx = 3;
   } else {
     bpm = data[1];
+    idx = 2;
   }
 
   HrSlot& s = s_slots[slot];
@@ -87,6 +101,19 @@ static void parseHrMeasurement(int slot, const uint8_t* data, size_t length) {
   s.latestContact = contactSupported ? contactDetected : false;
   s.hasNewSample = true;
   s.lastSampleMs = millis();
+
+  if (energyPresent) idx += 2;  // Enerji Harcamasi alani - su an kullanilmiyor, atlaniyor
+
+  if (rrPresent) {
+    s.rrEverSeen = true;
+    while (idx + 1 < length) {
+      uint16_t raw = data[idx] | (data[idx + 1] << 8);
+      s.rrBufferMs[s.rrHead] = (uint16_t)(raw * 1000.0f / 1024.0f + 0.5f);
+      s.rrHead = (s.rrHead + 1) % HR_RR_BUFFER_SIZE;
+      if (s.rrFilled < HR_RR_BUFFER_SIZE) s.rrFilled++;
+      idx += 2;
+    }
+  }
 
   // SAHA BULGUSU (2026-07, bkz. HeartRateHardware.h): Polar Sense (Verity
   // Sense'in bu yayin modundaki BLE adi) HICBIR ZAMAN contactSupported=true
@@ -292,6 +319,20 @@ bool HeartRateHardware::contactSupported(int slot) const { return s_slots[slot].
 bool HeartRateHardware::isConnected(int slot) const { return s_slots[slot].connected; }
 bool HeartRateHardware::slotEnabled(int slot) const { return s_slots[slot].enabled; }
 const char* HeartRateHardware::label(int slot) const { return s_slots[slot].label; }
+bool HeartRateHardware::rrSupported(int slot) const { return s_slots[slot].rrEverSeen; }
+
+int HeartRateHardware::rrIntervals(int slot, uint16_t* outBuf, int maxCount) const {
+  const HrSlot& s = s_slots[slot];
+  int n = s.rrFilled < maxCount ? s.rrFilled : maxCount;
+  // Halka tamponda en ESKI deger, rrHead'den (bir SONRAKI yazilacak yer)
+  // rrFilled kadar GERI gider - EN ESKIDEN EN YENIYE sirayla outBuf'a yaziyoruz.
+  int start = (s.rrHead - n + HR_RR_BUFFER_SIZE * 2) % HR_RR_BUFFER_SIZE;
+  for (int i = 0; i < n; i++) {
+    outBuf[i] = s.rrBufferMs[(start + i) % HR_RR_BUFFER_SIZE];
+  }
+  return n;
+}
+
 bool HeartRateHardware::isScanning() const { return NimBLEDevice::getScan()->isScanning(); }
 
 bool HeartRateHardware::hasFreshSignal(int slot, unsigned long nowMs) const {

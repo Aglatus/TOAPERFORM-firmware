@@ -55,6 +55,13 @@
 // notlar), 9'a cikmak coexistence riskini ONEMLI OLCUDE artirir. Gercek pratik
 // tavan (kac baglanti WiFi panelini bozmadan calisir) SADECE sahada, gercek
 // donanimla test edilerek ogrenilebilir.
+//
+// RR-INTERVAL / HRV (2026-08): BLE HR Measurement karakteristiginde RR-interval
+// alani OPSIYONELDIR (Flags biti 4) - cihaz gondermeyebilir, bkz. Config.h
+// HR_RR_BUFFER_SIZE notu (Polar Sense'in bu modda gonderip gondermedigi
+// SAHADA HENUZ DOGRULANMADI). Gelirse, her slot icin halka tamponda (bkz.
+// HR_RR_BUFFER_SIZE) son degerler (ms) tutulur - rrIntervals() ile chronological
+// (eskiden yeniye) sirada okunur, RMSSD hesabi PlayerMath::calculateRmssd()'de.
 // =====================================================
 #include <stddef.h>
 #include <stdint.h>
@@ -80,6 +87,14 @@ public:
   bool isConnected(int slot) const;
   bool slotEnabled(int slot) const;
   const char* label(int slot) const;
+
+  // Bu cihazin/modun RR-interval GONDERDIGI en az bir kere gozlemlendiyse true
+  // (bkz. Config.h notu - opsiyonel bir alan, cihaz hic gondermeyebilir).
+  bool rrSupported(int slot) const;
+
+  // outBuf'a o slotun son RR degerlerini (ms, ESKIDEN YENIYE sirali) yazar,
+  // yazilan adedi doner (en fazla maxCount, gercekte varsa daha az olabilir).
+  int rrIntervals(int slot, uint16_t* outBuf, int maxCount) const;
 
   bool isScanning() const;
 

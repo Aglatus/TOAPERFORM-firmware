@@ -15,6 +15,7 @@
 // =====================================================
 #include <LittleFS.h>
 #include "Config.h"
+#include "PlayerMath.h"
 
 struct RosterPlayer {
   int id = 0;
@@ -42,6 +43,18 @@ public:
   // Bir antrenman sonunda (o slota atanmis oyuncunun) rekorlarini gunceller
   // ve dosyaya yazar. sessionMaxHr rekor kirdiysa maxHrEver guncellenir.
   void updateAfterSession(int id, float sessionLoad, float sessionMaxHr);
+
+  // ---------------- ACWR / Monotonluk (bkz. Config.h "ACWR" notu) ----------------
+  // Bir antrenman sonunda o oyuncunun GUNLUK toplam yukune (dayIndex = epoch
+  // saniye/86400) bu seansin yukunu ekler - ayni gun icinde birden fazla
+  // antrenman olursa toplanir. LOADS_FILE'a (tum oyuncular icin ORTAK dosya,
+  // playerId ile ayirt edilir) eklenir; ACWR_MAX_LOOKBACK_DAYS'ten eski
+  // kayitlar periyodik olarak budanir.
+  void recordDailyLoad(int id, long dayIndex, float load);
+
+  // O oyuncunun LOADS_FILE'daki (en fazla MAX_LOAD_ENTRIES_PER_PLAYER kadar,
+  // en yeniler tutulur) gunluk yuklerinden ACWR/monotonluk hesaplar.
+  PlayerMath::AcwrResult acwrForPlayer(int id, long todayIdx) const;
 
 private:
   RosterPlayer players_[MAX_ROSTER_PLAYERS];
