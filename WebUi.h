@@ -453,9 +453,15 @@ function slotCardHtml(slot){
         <div class="legend-chip" id="monotonyBand${slot}" style="margin-top:6px;color:var(--muted-light)">Yetersiz veri</div>
       </div>
       <div class="card" id="rmssdCard${slot}" style="display:none">
-        <div class="label">RMSSD (anlik, HRV)</div>
+        <div class="label">HRV (anlik: RMSSD / SDNN / pNN50)</div>
         <div class="value"><span id="rmssdValue${slot}">--</span> <span class="unit">ms</span></div>
+        <div class="value mini">SDNN: <span id="sdnnValue${slot}">--</span> ms &nbsp;|&nbsp; pNN50: <span id="pnn50Value${slot}">--</span>%</div>
         <div class="legend-chip" style="margin-top:6px;color:var(--muted-light)">Hareket halinde - dinlenme HRV'si degil</div>
+      </div>
+      <div class="card big">
+        <div class="label">Kalp Hizi Toparlanmasi (HRR)</div>
+        <div class="value mini" id="hrrStatus${slot}">Test baslatilmadi</div>
+        <button class="btn" style="margin-top:8px" onclick="startHrrTestNow(${slot})">Testi Baslat (efor bitince bas)</button>
       </div>
       <div class="card big">
         <div class="label">Nabiz Bolgeleri (bu oturum)</div>
@@ -550,11 +556,26 @@ function renderSlot(slot, s){
   document.getElementById('monotonyValue'+slot).innerText = s.acwrDays >= 3 ? s.monotony.toFixed(2) : '--';
   document.getElementById('monotonyBand'+slot).innerText = s.monotonyBand;
 
-  // RMSSD karti sadece cihaz/mod bu veriyi GERCEKTEN gonderiyorsa gorunur -
+  // HRV karti sadece cihaz/mod bu veriyi GERCEKTEN gonderiyorsa gorunur -
   // Polar Sense bu yayin modunda gondermeyebilir (bkz. Config.h notu).
   document.getElementById('rmssdCard'+slot).style.display = s.rrSupported ? '' : 'none';
   if (s.rrSupported) {
     document.getElementById('rmssdValue'+slot).innerText = s.fresh ? s.rmssd.toFixed(0) : '--';
+    document.getElementById('sdnnValue'+slot).innerText = s.fresh ? s.sdnn.toFixed(0) : '--';
+    document.getElementById('pnn50Value'+slot).innerText = s.fresh ? s.pnn50.toFixed(0) : '--';
+  }
+
+  // Kalp Hizi Toparlanmasi (HRR) - devam eden veya tamamlanmis son test.
+  const hrrEl = document.getElementById('hrrStatus'+slot);
+  if (s.hrrActive) {
+    hrrEl.innerText = 'Test suruyor... (' + s.hrrElapsedSec + 'sn) HR0=' + s.hrrHr0 + ' bpm'
+      + (s.hrr1 >= 0 ? (' | 1dk dusus: ' + s.hrr1 + ' bpm') : '');
+  } else if (s.hrr2 >= 0) {
+    hrrEl.innerText = 'Son test: HR0=' + s.hrrHr0 + ' bpm | 1dk dusus: ' + s.hrr1 + ' bpm | 2dk dusus: ' + s.hrr2 + ' bpm';
+  } else if (s.hrr1 >= 0) {
+    hrrEl.innerText = 'Son test: HR0=' + s.hrrHr0 + ' bpm | 1dk dusus: ' + s.hrr1 + ' bpm (2dk olculmedi)';
+  } else {
+    hrrEl.innerText = 'Test baslatilmadi';
   }
 
   // Sunucudaki mevcut atamayla dropdown'u senkron tutar (baska bir cihaz/
@@ -637,6 +658,16 @@ function assignSlotNow(slot){
   const id = sel.value;
   fetch('/assignslot?slot=' + slot + '&id=' + id, { method: 'POST', cache: 'no-store' })
   .then(() => setTimeout(loadData, 200))
+  .catch(e=>{});
+}
+
+function startHrrTestNow(slot){
+  fetch('/starthrrtest?slot=' + slot, { method: 'POST', cache: 'no-store' })
+  .then(r=>r.json())
+  .then(res=>{
+    if (res.error) alert(res.error);
+    else setTimeout(loadData, 200);
+  })
   .catch(e=>{});
 }
 

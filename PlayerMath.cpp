@@ -143,15 +143,38 @@ AcwrResult calculateAcwr(const DayLoad* entries, int entryCount, long todayIdx) 
   return out;
 }
 
-float calculateRmssd(const uint16_t* rrMs, int count) {
-  if (count < 2) return 0;
+HrvMetrics calculateHrv(const uint16_t* rrMs, int count) {
+  HrvMetrics out;
+  if (count < 2) return out;
 
-  float sumSq = 0;
+  float sumSqDiff = 0;
+  int nn50Count = 0;
   for (int i = 1; i < count; i++) {
     float diff = (float)rrMs[i] - (float)rrMs[i - 1];
-    sumSq += diff * diff;
+    sumSqDiff += diff * diff;
+    if (fabsf(diff) > 50.0f) nn50Count++;
   }
-  return sqrtf(sumSq / (count - 1));
+  int diffCount = count - 1;
+  out.rmssdMs = sqrtf(sumSqDiff / diffCount);
+  out.pnn50Pct = (nn50Count * 100.0f) / diffCount;
+
+  float mean = 0;
+  for (int i = 0; i < count; i++) mean += rrMs[i];
+  mean /= count;
+
+  float sumSqDev = 0;
+  for (int i = 0; i < count; i++) {
+    float dev = (float)rrMs[i] - mean;
+    sumSqDev += dev * dev;
+  }
+  out.sdnnMs = sqrtf(sumSqDev / count);
+
+  return out;
+}
+
+int calculateHrrDrop(int hr0, int hrAtMark) {
+  if (hrAtMark < 0) return -1;
+  return hr0 - hrAtMark;
 }
 
 }  // namespace PlayerMath

@@ -116,6 +116,18 @@ static const unsigned long HR_STUCK_TIMEOUT_MS = 8000;
 // panelde bu net belirtilmeli, "toparlanma skoru" gibi sunulmamali.
 static const int HR_RR_BUFFER_SIZE = 40;  // slot basina tutulan son RR degeri sayisi (~halka tampon)
 
+// ---------------- Kalp Hizi Toparlanmasi (HRR) ----------------
+// Kaynak: Cole CR ve ark., N Engl J Med 2000. Efor sonrasi 1. ve 2. dakikada
+// nabzin ne kadar dustugunu olcer - basit ama literatur-destekli bir
+// kardiyovaskuler toparlanma gostergesi. Cihaz "efor bitti" anini GPS/
+// ivmeolcer olmadan otomatik ALGILAYAMAZ - bu yuzden panelden MANUEL
+// tetiklenir ("Testi Baslat"), o andaki bpm HR0 olarak alinir. NOT: Cole ve
+// ark.'daki dusuk-HRR1 = artmis mortalite riski iliskisi GENEL POPULASYONDA
+// kurulmustur, sporcu populasyonuna DOGRUDAN tasinamaz - bu yuzden bir risk
+// bandi/siniflandirmasi SUNULMAZ, sadece ham dusus degeri (bpm) gosterilir.
+static const unsigned long HRR_MARK_1_MS = 60000;   // 1. dakika
+static const unsigned long HRR_MARK_2_MS = 120000;  // 2. dakika
+
 // ---------------- Nabiz - Coklu Bant Destegi ----------------
 // Ayni ESP32 en fazla HR_DEVICE_SLOTS (=HeartRateHardware::SLOT_COUNT, bkz.
 // HeartRateHardware.h - IKI SABIT AYNI KALMALI) nabiz sensorune AYNI ANDA

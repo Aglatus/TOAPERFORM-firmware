@@ -71,11 +71,26 @@ extern char riskColor[HR_SLOTS][9];
 extern char lastWarning[HR_SLOTS][96];
 extern unsigned long warningUntilMs[HR_SLOTS];
 
-// RR-interval/RMSSD (bkz. Config.h HR_RR_BUFFER_SIZE, HeartRateHardware.h,
-// PlayerMath::calculateRmssd notlari). rrSupported[i]=false ise cihaz/mod bu
+// RR-interval/HRV (bkz. Config.h HR_RR_BUFFER_SIZE, HeartRateHardware.h,
+// PlayerMath::calculateHrv notlari). rrSupported[i]=false ise cihaz/mod bu
 // veriyi hic gondermiyor demektir - panelde tamamen gizlenmeli.
 extern float hrRmssdMs[HR_SLOTS];
+extern float hrSdnnMs[HR_SLOTS];
+extern float hrPnn50[HR_SLOTS];
 extern bool hrRrSupported[HR_SLOTS];
+
+// ---------------- Kalp Hizi Toparlanmasi (HRR) testi (bkz. Config.h) ----------------
+// Panelden manuel tetiklenir - "efor bitti" anini cihaz kendisi algilayamaz.
+extern bool hrrActive[HR_SLOTS];
+extern unsigned long hrrStartMs[HR_SLOTS];
+extern int hrrHr0[HR_SLOTS];
+extern int hrrHr60[HR_SLOTS];   // -1 = 1. dakika henuz olculmedi
+extern int hrrHr120[HR_SLOTS];  // -1 = 2. dakika henuz olculmedi
+
+// O anki bpm'i HR0 olarak yakalar, 1./2. dakika olcumlerini sifirlar ve
+// sayaci baslatir. hasFreshSignal false ise (guvenilir bpm yoksa) sessizce
+// hicbir sey yapmaz (caller - WebRoutes - bunu kontrol etmeli).
+void startHrrTest(int slot, int currentBpm);
 
 extern unsigned long lastPeerBroadcastMs;  // ESP-NOW takim yayini icin son yayin zamani
 

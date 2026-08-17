@@ -35,7 +35,23 @@ char lastWarning[HR_SLOTS][96];
 unsigned long warningUntilMs[HR_SLOTS];
 
 float hrRmssdMs[HR_SLOTS];
+float hrSdnnMs[HR_SLOTS];
+float hrPnn50[HR_SLOTS];
 bool hrRrSupported[HR_SLOTS];
+
+bool hrrActive[HR_SLOTS];
+unsigned long hrrStartMs[HR_SLOTS];
+int hrrHr0[HR_SLOTS];
+int hrrHr60[HR_SLOTS];
+int hrrHr120[HR_SLOTS];
+
+void startHrrTest(int slot, int currentBpm) {
+  hrrActive[slot] = true;
+  hrrStartMs[slot] = millis();
+  hrrHr0[slot] = currentBpm;
+  hrrHr60[slot] = -1;
+  hrrHr120[slot] = -1;
+}
 
 unsigned long lastPeerBroadcastMs = 0;
 
@@ -86,6 +102,11 @@ void resetSession() {
     for (int z = 0; z < 5; z++) hrZoneSeconds[i][z] = 0;
 
     fatigueTrend[i].reset();
+
+    hrrActive[i] = false;
+    hrrHr0[i] = 0;
+    hrrHr60[i] = -1;
+    hrrHr120[i] = -1;
   }
 
   sessionStartMs = millis();

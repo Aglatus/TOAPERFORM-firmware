@@ -85,15 +85,34 @@ struct AcwrResult {
 // todayIdx: bugunun gun-index'i (epoch saniye / 86400).
 AcwrResult calculateAcwr(const DayLoad* entries, int entryCount, long todayIdx);
 
-// ---------------- RMSSD (RR-interval tabanli, zaman-alani HRV metrigi) ----------------
-// RMSSD = ardisik RR araliklari farklarinin kareler ortalamasinin karekoku.
-// Standart, hesaplama olarak hafif (FFT gerektirmez) bir zaman-alani HRV
-// metrigi. ONEMLI: bu fonksiyon SAF matematiktir, girdinin HAREKET HALINDE mi
-// yoksa DINLENME HALINDE mi toplandigini bilmez/umursamaz - o ayrimi caller
-// yapmali (bkz. Config.h HR_RR_BUFFER_SIZE / HeartRateHardware.h notlari:
-// egzersiz sirasinda RMSSD "toparlanma HRV'si" ANLAMINA GELMEZ, sadece anlik
-// bir gostergedir).
-// rrMs: ardisik (zaman sirali) RR araliklari, milisaniye. count < 2 ise 0 doner.
-float calculateRmssd(const uint16_t* rrMs, int count);
+// ---------------- HRV (RR-interval tabanli, zaman-alani metrikleri) ----------------
+// RMSSD, SDNN, pNN50: standart, hesaplama olarak hafif (FFT gerektirmez)
+// zaman-alani HRV metrikleri. ONEMLI: bu fonksiyon SAF matematiktir, girdinin
+// HAREKET HALINDE mi yoksa DINLENME HALINDE mi toplandigini bilmez/umursamaz -
+// o ayrimi caller yapmali (bkz. Config.h HR_RR_BUFFER_SIZE / HeartRateHardware.h
+// notlari: egzersiz sirasinda bu degerler "toparlanma HRV'si" ANLAMINA GELMEZ,
+// sadece anlik bir gostergedir).
+struct HrvMetrics {
+  float rmssdMs = 0;   // ardisik RR farklarinin kareler ortalamasinin karekoku
+  float sdnnMs = 0;    // RR araliklarinin standart sapmasi (genel degiskenlik)
+  float pnn50Pct = 0;  // ardisik RR farki 50ms'den buyuk olan ciftlerin yuzdesi
+};
+
+// rrMs: ardisik (zaman sirali) RR araliklari, milisaniye. count < 2 ise
+// tum alanlar 0 doner.
+HrvMetrics calculateHrv(const uint16_t* rrMs, int count);
+
+// ---------------- Kalp Hizi Toparlanmasi (HRR) ----------------
+// Kaynak: Cole CR ve ark., "Heart-rate recovery immediately after exercise as
+// a predictor of mortality", N Engl J Med 2000 - genel populasyonda dusuk HRR1
+// artmis mortalite riskiyle iliskilendirilmis. NOT: bu klinik esik DOGRUDAN
+// sporcu populasyonuna tasinamaz - bu yuzden burada SADECE HAM DUSUS DEGERI
+// (bpm) hesaplanir, bir "risk bandi" siniflandirmasi YAPILMAZ (bkz.
+// HeartRateHardware.h/TOAPERFORM.ino - manuel tetiklenir, cihaz "efor bitti"
+// anini GPS/ivmeolcer olmadan otomatik algilayamaz).
+// hr0: testin baslangicindaki (efor sonu) bpm. hrAtMark: 1./2. dakikada
+// olculen bpm (henuz olculmediyse -1 verilmeli). Donus: dusus miktari (bpm),
+// hrAtMark < 0 ise -1.
+int calculateHrrDrop(int hr0, int hrAtMark);
 
 }  // namespace PlayerMath

@@ -35,6 +35,8 @@ static void handleGpsConfig() {
 }
 
 static void handleData() {
+  unsigned long now = millis();
+
   // Panel her /data cagrisinda telefonun GERCEK saatini (epoch saniye) yollar -
   // ESP32'nin RTC'si yok, ACWR'nin "bugun"u bu sekilde tahmin edilir (bkz.
   // Globals.h updateEpochSync/currentDayIndex).
@@ -80,6 +82,14 @@ static void handleData() {
     PlayerMath::AcwrResult acwr;
     if (hasPlayer && today >= 0) acwr = rosterStore.acwrForPlayer(slotPlayerId[i], today);
 
+    // HRR testi: hem devam eden (hrrActive) hem tamamlanmis (son sonuc kalir,
+    // yeni bir /reset veya yeni test baslayana kadar panelde gorunur) durumu
+    // tasir. Dusus miktarlari (bkz. PlayerMath::calculateHrrDrop) sadece ilgili
+    // dakika olculdukten sonra anlamli, aksi halde -1 (henuz yok).
+    int hrr1 = PlayerMath::calculateHrrDrop(hrrHr0[i], hrrHr60[i]);
+    int hrr2 = PlayerMath::calculateHrrDrop(hrrHr0[i], hrrHr120[i]);
+    unsigned long hrrElapsedSec = hrrActive[i] ? (now - hrrStartMs[i]) / 1000UL : 0;
+
     off += snprintf(json + off, sizeof(json) - off,
       "%s{\"slot\":%d,\"bandLabel\":\"%s\",\"enabled\":%s,"
       "\"playerId\":%d,\"playerName\":\"%s\",\"baselineReady\":%s,"
@@ -87,7 +97,8 @@ static void handleData() {
       "\"pctMax\":%.0f,\"zone\":%d,\"zoneSec\":[%lu,%lu,%lu,%lu,%lu],"
       "\"fatigue\":%d,\"riskStatus\":\"%s\",\"riskColor\":\"%s\",\"warning\":\"%s\",\"trendWarning\":\"%s\","
       "\"acwr\":%.2f,\"acwrBand\":\"%s\",\"acwrDays\":%d,\"monotony\":%.2f,\"monotonyBand\":\"%s\","
-      "\"rrSupported\":%s,\"rmssd\":%.1f}",
+      "\"rrSupported\":%s,\"rmssd\":%.1f,\"sdnn\":%.1f,\"pnn50\":%.1f,"
+      "\"hrrActive\":%s,\"hrrElapsedSec\":%lu,\"hrrHr0\":%d,\"hrr1\":%d,\"hrr2\":%d}",
       i == 0 ? "" : ",",
       i, heartRateHardware.label(i), enabled ? "true" : "false",
       slotPlayerId[i], hasPlayer ? slotPlayerName[i] : "", baselineReady ? "true" : "false",
@@ -97,7 +108,8 @@ static void handleData() {
       hrZoneSeconds[i][0], hrZoneSeconds[i][1], hrZoneSeconds[i][2], hrZoneSeconds[i][3], hrZoneSeconds[i][4],
       fatigueScore[i], riskStatus[i], riskColor[i], lastWarning[i], trendWarning,
       acwr.acwr, acwr.band, acwr.daysWithData, acwr.monotony, acwr.monotonyBand,
-      hrRrSupported[i] ? "true" : "false", hrRmssdMs[i]
+      hrRrSupported[i] ? "true" : "false", hrRmssdMs[i], hrSdnnMs[i], hrPnn50[i],
+      hrrActive[i] ? "true" : "false", hrrElapsedSec, hrrHr0[i], hrr1, hrr2
     );
   }
 
@@ -174,6 +186,32 @@ static void handleAssignSlot() {
 
   sendNoCacheHeaders();
   server.send(200, "application/json", "{\"assigned\":true}");
+}
+
+// =====================================================
+// Kalp Hizi Toparlanmasi (HRR) Testi
+// =====================================================
+// slot=<0..HR_SLOTS-1> - o slotun O ANKI guvenilir bpm'ini HR0 olarak
+// yakalar (bkz. Config.h HRR notu - "efor bitti" ani manuel isaretlenir).
+static void handleStartHrrTest() {
+  if (!server.hasArg("slot")) {
+    server.send(400, "application/json", "{\"error\":\"slot gerekli\"}");
+    return;
+  }
+  int slot = server.arg("slot").toInt();
+  if (slot < 0 || slot >= HR_SLOTS) {
+    server.send(400, "application/json", "{\"error\":\"gecersiz slot\"}");
+    return;
+  }
+  if (!heartRateSignalFresh[slot]) {
+    server.send(400, "application/json", "{\"error\":\"guvenilir nabiz sinyali yok\"}");
+    return;
+  }
+
+  startHrrTest(slot, heartRateBpm[slot]);
+
+  sendNoCacheHeaders();
+  server.send(200, "application/json", "{\"started\":true}");
 }
 
 // =====================================================
@@ -435,6 +473,7 @@ void registerWebRoutes() {
   server.on("/roster", handleRosterList);
   server.on("/addplayer", HTTP_POST, handleAddPlayer);
   server.on("/assignslot", HTTP_POST, handleAssignSlot);
+  server.on("/starthrrtest", HTTP_POST, handleStartHrrTest);
   server.on("/reset", handleReset);
   server.on("/resetseason", handleResetSeason);
   server.on("/team", handleTeam);

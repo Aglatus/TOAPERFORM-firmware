@@ -131,13 +131,31 @@ void loop() {
     Serial.println(debugTimeBuf);
 
     for (int i = 0; i < HR_SLOTS; i++) {
-      // RR-interval/RMSSD (bkz. Config.h HR_RR_BUFFER_SIZE notu) - oyuncu
+      // RR-interval/HRV (bkz. Config.h HR_RR_BUFFER_SIZE notu) - oyuncu
       // atanmasindan bagimsiz, salt donanimdan gelen bir deger.
       hrRrSupported[i] = heartRateHardware.rrSupported(i);
       if (hrRrSupported[i]) {
         uint16_t rrBuf[HR_RR_BUFFER_SIZE];
         int rrCount = heartRateHardware.rrIntervals(i, rrBuf, HR_RR_BUFFER_SIZE);
-        hrRmssdMs[i] = PlayerMath::calculateRmssd(rrBuf, rrCount);
+        PlayerMath::HrvMetrics hrv = PlayerMath::calculateHrv(rrBuf, rrCount);
+        hrRmssdMs[i] = hrv.rmssdMs;
+        hrSdnnMs[i] = hrv.sdnnMs;
+        hrPnn50[i] = hrv.pnn50Pct;
+      }
+
+      // Kalp Hizi Toparlanmasi (HRR) testi - panelden manuel baslatilir (bkz.
+      // Config.h HRR notu). Sadece guvenilir (fresh) bpm varken 1./2. dakika
+      // olcumu YAPILIR - aksi halde donuk/eski bir deger yanlislikla "olcum"
+      // sayilmasin diye o turda atlanir, bir sonraki turda tekrar denenir.
+      if (hrrActive[i]) {
+        unsigned long elapsed = now - hrrStartMs[i];
+        if (hrrHr60[i] < 0 && elapsed >= HRR_MARK_1_MS && heartRateSignalFresh[i]) {
+          hrrHr60[i] = heartRateBpm[i];
+        }
+        if (hrrHr120[i] < 0 && elapsed >= HRR_MARK_2_MS && heartRateSignalFresh[i]) {
+          hrrHr120[i] = heartRateBpm[i];
+          hrrActive[i] = false;  // test tamamlandi
+        }
       }
 
       // Atanmamis slotlarda da BPM okunur/gosterilir (bkz. HeartRateHardware),
