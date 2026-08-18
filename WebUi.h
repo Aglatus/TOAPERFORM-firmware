@@ -154,19 +154,25 @@ body{
 }
 /* Takim Risk Panosu - HR_SLOTS'a kadar (9) oyuncu kartinin tek ekranda
    makul sekilde sigmasi icin, genel .card/.grid'den daha kompakt bir varyant.
-   auto-fill: genis ekranda (tablet vb.) daha fazla sutun, dar telefonda 2'ye
-   duser - .grid'in sabit "1fr 1fr"unden farkli olarak ekran genisligine gore
-   kendini ayarlar. */
+   Telefonda (dar ekran) auto-fill ile 2-3 sutuna duser; 700px ustunde
+   (iPad portre ve uzeri, bkz. asagidaki @media) SABIT 3 sutuna gecer - 9
+   oyuncu TAM 3x3 duzenli sigsin diye (kullanici talebi: "iPad'de baktiginda
+   hepsi sigmali"). */
 .team-grid{
   display:grid;
   grid-template-columns:repeat(auto-fill, minmax(130px, 1fr));
   gap:8px;
 }
+@media (min-width: 700px){
+  .team-grid{
+    grid-template-columns:repeat(3, 1fr);
+  }
+}
 .team-card{
   background:linear-gradient(180deg,var(--card),var(--card2));
   border:1px solid var(--line);
   border-radius:14px;
-  padding:10px;
+  padding:8px 10px;
   box-shadow:0 4px 12px rgba(0,0,0,.25);
   min-width:0;  /* uzun isimlerin grid hucresini genisletmesini onler */
 }
@@ -180,7 +186,7 @@ body{
 }
 .team-card .tc-bpm{
   font-family:"TP Display",-apple-system,"Segoe UI",Roboto,Arial,sans-serif;
-  font-size:22px;
+  font-size:20px;
   font-weight:900;
   font-variant-numeric:tabular-nums;
   margin-top:2px;
@@ -189,7 +195,7 @@ body{
   display:flex;
   gap:4px;
   flex-wrap:wrap;
-  margin-top:6px;
+  margin-top:4px;
 }
 .team-card .tc-chips .zone-badge{
   margin-top:0;
