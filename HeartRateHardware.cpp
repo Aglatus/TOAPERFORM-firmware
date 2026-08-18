@@ -1,6 +1,7 @@
 #include "HeartRateHardware.h"
 #include "Config.h"
 #include <NimBLEDevice.h>
+#include <esp_coexist.h>
 #include <string.h>
 
 // Standart Bluetooth SIG Heart Rate Service / Characteristic UUID'leri.
@@ -223,6 +224,19 @@ static bool connectToDevice(int slot, NimBLEAdvertisedDevice* device) {
     s.client->setClientCallbacks(&s_clientCallbacks, false);
   }
 
+  // BAGLANTI PARAMETRELERI (SAHADA HENUZ DOGRULANMADI - muhendislik hipotezi):
+  // varsayilan NimBLE parametreleri (kisa aralik, siki supervision timeout)
+  // WiFi AP + ESP-NOW ile ayni radyoyu paylasirken (bkz. begin() - scan
+  // interval/window notu, ayni kok sorun) BLE'nin kisa bir radyo-acligi
+  // penceresinde bile baglanti koptu sayilmasina yol acabilir. Nabiz verisi
+  // saniyede ~1 kez yeterli oldugu icin daha UZUN bir baglanti araligindan
+  // (30-50ms) odun vermeden, latency (4 - art arda 4 baglanti olayini
+  // atlama izni) ve supervision timeout'u (4sn) cok daha comert tutmak,
+  // WiFi/ESP-NOW'un araya girdigi kisa surelerde baglantinin KOPMADAN
+  // hayatta kalma sansini artirmali. minInterval/maxInterval: 1.25ms birimi,
+  // timeout: 10ms birimi.
+  s.client->setConnectionParams(24, 40, 4, 400);
+
   if (!s.client->connect(device)) return false;
 
   NimBLERemoteService* svc = s.client->getService(HR_SERVICE_UUID);
@@ -272,6 +286,19 @@ void HeartRateHardware::begin() {
   }
 
   NimBLEDevice::init("");
+
+  // WiFi+BLE RADYO PAYLASIMI (SAHADA HENUZ DOGRULANMADI - muhendislik
+  // hipotezi, bkz. asagidaki scan interval/window notu ile AYNI kok sorun):
+  // ESP-IDF'in coexistence hakemi varsayilan olarak hangi tarafa oncelik
+  // verecegini kendi belirler - saha bulgusu (WiFi AP'ye assoc olunuyor ama
+  // DHCP hic tamamlanmiyordu) BLE'nin WiFi'yi acliktan biraktigini
+  // gosteriyordu. BALANCE tercihini ACIKCA istemek, scan window'unu
+  // kucultmenin (asagida) yaninda WiFi'ye radyo zamaninda GARANTILI bir pay
+  // birakmayi hedefliyor - implicit/dokumante olmayan varsayilana guvenmek
+  // yerine.
+  esp_err_t coexResult = esp_coex_preference_set(ESP_COEX_PREFER_BALANCE);
+  Serial.print("[BLE] WiFi/BLE coexistence tercihi (BALANCE) ayarlandi, sonuc=");
+  Serial.println(coexResult == ESP_OK ? "OK" : "HATA");
 
   NimBLEScan* scan = NimBLEDevice::getScan();
   scan->setScanCallbacks(&s_scanCallbacks, false);
