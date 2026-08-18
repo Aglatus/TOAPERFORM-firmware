@@ -177,4 +177,10 @@ int calculateHrrDrop(int hr0, int hrAtMark) {
   return hr0 - hrAtMark;
 }
 
+const char* wellnessBand(int sum) {
+  if (sum <= WELLNESS_GOOD_MAX) return "Iyi";
+  if (sum <= WELLNESS_MODERATE_MAX) return "Orta";
+  return "Kotu";
+}
+
 }  // namespace PlayerMath

@@ -397,6 +397,18 @@ function slotCardHtml(slot){
         <option value="0">-- Oyuncu secilmedi --</option>
       </select>
     </div>
+    <div class="card big">
+      <div class="label">Gunluk Wellness Anketi (antrenman oncesi, 1=iyi - 10=kotu)</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px">
+        <label style="font-size:13px">Uyku kalitesi (kotu)<input type="number" min="1" max="10" value="5" id="wSleep${slot}" style="width:100%;padding:8px;margin-top:4px;border-radius:8px;border:1px solid var(--border);background:var(--card2);color:var(--text)"></label>
+        <label style="font-size:13px">Yorgunluk<input type="number" min="1" max="10" value="5" id="wFatigue${slot}" style="width:100%;padding:8px;margin-top:4px;border-radius:8px;border:1px solid var(--border);background:var(--card2);color:var(--text)"></label>
+        <label style="font-size:13px">Kas agrisi<input type="number" min="1" max="10" value="5" id="wSoreness${slot}" style="width:100%;padding:8px;margin-top:4px;border-radius:8px;border:1px solid var(--border);background:var(--card2);color:var(--text)"></label>
+        <label style="font-size:13px">Stres<input type="number" min="1" max="10" value="5" id="wStress${slot}" style="width:100%;padding:8px;margin-top:4px;border-radius:8px;border:1px solid var(--border);background:var(--card2);color:var(--text)"></label>
+        <label style="font-size:13px">Ruh hali (kotu)<input type="number" min="1" max="10" value="5" id="wMood${slot}" style="width:100%;padding:8px;margin-top:4px;border-radius:8px;border:1px solid var(--border);background:var(--card2);color:var(--text)"></label>
+      </div>
+      <button class="btn" style="margin-top:10px" onclick="submitWellnessNow(${slot})">Anketi Kaydet</button>
+      <div class="legend-chip" id="wellnessStatus${slot}" style="margin-top:8px;color:var(--muted-light)">Bugun icin veri yok</div>
+    </div>
     <div id="riskBox${slot}" class="risk">
       <div id="riskReadyBlock${slot}">
         <div class="risk-main"><span id="riskText${slot}">NORMAL</span></div>
@@ -578,6 +590,13 @@ function renderSlot(slot, s){
     hrrEl.innerText = 'Test baslatilmadi';
   }
 
+  // Wellness anketi - bugun icin kaydedilmis bir deger varsa gosterir
+  // (kullanici formu tekrar doldurmadan uzerine yazmiyoruz, sadece durum yazisi).
+  const wEl = document.getElementById('wellnessStatus'+slot);
+  wEl.innerText = s.wellnessHasData
+    ? ('Bugun: ' + s.wellnessSum + '/50 (' + s.wellnessBand + ')')
+    : 'Bugun icin veri yok';
+
   // Sunucudaki mevcut atamayla dropdown'u senkron tutar (baska bir cihaz/
   // sekmeden atama degistiyse de burada gorunur). Kullanici o an secim
   // yapiyorsa (odakta) dokunmaz.
@@ -601,6 +620,7 @@ function loadData(){
      if (!s.enabled) continue;
      renderSlot(s.slot, s);
    }
+   renderTeamDashboard(d.slots);
 
    const s0 = d.slots[0];
    if (s0 && s0.enabled) {
@@ -669,6 +689,54 @@ function startHrrTestNow(slot){
     else setTimeout(loadData, 200);
   })
   .catch(e=>{});
+}
+
+function submitWellnessNow(slot){
+  const sel = document.getElementById('playerSelect'+slot);
+  const id = sel.value;
+  if (!id || id === '0') { alert('Once bir oyuncu secin'); return; }
+
+  const v = (elId) => document.getElementById(elId).value;
+  const params = 'id=' + id
+    + '&sleep=' + v('wSleep'+slot)
+    + '&fatigue=' + v('wFatigue'+slot)
+    + '&soreness=' + v('wSoreness'+slot)
+    + '&stress=' + v('wStress'+slot)
+    + '&mood=' + v('wMood'+slot);
+
+  fetch('/wellness?' + params, { method: 'POST', cache: 'no-store' })
+  .then(r=>r.json())
+  .then(res=>{
+    if (res.error) alert(res.error);
+    else setTimeout(loadData, 200);
+  })
+  .catch(e=>{});
+}
+
+// Her enabled+atanmis slotu tek satirda ozetleyen takim panosu - koc tum
+// oyunculari tek bakista gorur, tek tek kart acmasi gerekmez.
+function renderTeamDashboard(slots){
+  const body = document.getElementById('teamDashBody');
+  const rows = slots.filter(s => s.enabled && s.playerId !== 0);
+
+  if (rows.length === 0) {
+    body.innerHTML = '<tr><td colspan="6" style="padding:10px;color:var(--muted)">Henuz oyuncu atanmadi</td></tr>';
+    return;
+  }
+
+  body.innerHTML = rows.map(s => {
+    const bpmTxt = s.fresh ? s.bpm : '--';
+    const acwrTxt = s.acwrDays >= 3 ? s.acwr.toFixed(2) + ' (' + s.acwrBand + ')' : 'Yetersiz veri';
+    const wellnessTxt = s.wellnessHasData ? (s.wellnessSum + '/50 (' + s.wellnessBand + ')') : '--';
+    return '<tr style="border-top:1px solid var(--border)">'
+      + '<td style="padding:6px">' + s.playerName + '</td>'
+      + '<td style="padding:6px">' + bpmTxt + '</td>'
+      + '<td style="padding:6px">' + s.fatigue + '/100</td>'
+      + '<td style="padding:6px"><span class="legend-chip" style="background:' + s.riskColor + ';color:#020617">' + s.riskStatus + '</span></td>'
+      + '<td style="padding:6px">' + acwrTxt + '</td>'
+      + '<td style="padding:6px">' + wellnessTxt + '</td>'
+      + '</tr>';
+  }).join('');
 }
 
 // Panel acilista bir kere okur - "Sunucuya Gonder" butonlarinin hedef URL'i,
@@ -860,6 +928,25 @@ function resetSeasonNow(){
         style="flex:1;padding:10px;border-radius:10px;border:1px solid var(--border);background:var(--card2);color:var(--text)">
       <button class="btn" style="width:auto;padding:10px 16px" onclick="addPlayerNow()">Ekle</button>
     </div>
+  </div>
+
+  <div class="section-title">Takim Risk Panosu</div>
+  <div class="card big" style="overflow-x:auto">
+    <table id="teamDashTable" style="width:100%;border-collapse:collapse;font-size:14px">
+      <thead>
+        <tr style="text-align:left;color:var(--muted)">
+          <th style="padding:6px">Oyuncu</th>
+          <th style="padding:6px">Nabiz</th>
+          <th style="padding:6px">Yorgunluk</th>
+          <th style="padding:6px">Risk</th>
+          <th style="padding:6px">ACWR</th>
+          <th style="padding:6px">Wellness</th>
+        </tr>
+      </thead>
+      <tbody id="teamDashBody">
+        <tr><td colspan="6" style="padding:10px;color:var(--muted)">Henuz oyuncu atanmadi</td></tr>
+      </tbody>
+    </table>
   </div>
 
   <!-- Bant/oyuncu kartlari sunucudan gelen slot sayisina (enabled=true olanlar)

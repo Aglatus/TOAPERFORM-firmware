@@ -112,6 +112,70 @@ PlayerMath::AcwrResult RosterStore::acwrForPlayer(int id, long todayIdx) const {
   return PlayerMath::calculateAcwr(entries, entryCount, todayIdx);
 }
 
+// WELLNESS_FILE satir bicimi: playerId,dayIndex,sleep,fatigue,soreness,stress,mood
+// - TUM oyuncular icin ORTAK tek dosya, ayni gun icin birden fazla kayit
+// olabilir (en son yazilan gecerli sayilir, bkz. todayWellness).
+void RosterStore::recordWellness(int id, long dayIndex, int sleep, int fatigue, int soreness, int stress, int mood) {
+  File f = LittleFS.open(WELLNESS_FILE, "a");
+  if (f) {
+    char buf[64];
+    snprintf(buf, sizeof(buf), "%d,%ld,%d,%d,%d,%d,%d", id, dayIndex, sleep, fatigue, soreness, stress, mood);
+    f.println(buf);
+    f.close();
+  }
+
+  // Sadece "bugun"u bilmemiz yeterli - trend gerekmiyor, bu yuzden 7 gunden
+  // eski kayitlari agresifce buda (LOADS_FILE'daki 42 gunluk pencereden farkli
+  // olarak, dosyayi kucuk tutmak icin).
+  File src = LittleFS.open(WELLNESS_FILE, "r");
+  if (!src) return;
+
+  File tmp = LittleFS.open("/wellness.tmp", "w");
+  if (!tmp) { src.close(); return; }
+
+  char lineBuf[64];
+  long cutoff = dayIndex - 7;
+  while (readLineToBuffer(src, lineBuf, sizeof(lineBuf))) {
+    if (strlen(lineBuf) == 0) continue;
+    int lineId, s, fa, so, st, mo;
+    long lineDay;
+    if (sscanf(lineBuf, "%d,%ld,%d,%d,%d,%d,%d", &lineId, &lineDay, &s, &fa, &so, &st, &mo) != 7) continue;
+    if (lineDay < cutoff) continue;
+    tmp.println(lineBuf);
+  }
+  src.close();
+  tmp.close();
+
+  LittleFS.remove(WELLNESS_FILE);
+  LittleFS.rename("/wellness.tmp", WELLNESS_FILE);
+}
+
+RosterStore::WellnessEntry RosterStore::todayWellness(int id, long dayIndex) const {
+  WellnessEntry out;
+
+  File f = LittleFS.open(WELLNESS_FILE, "r");
+  if (!f) return out;
+
+  char lineBuf[64];
+  while (readLineToBuffer(f, lineBuf, sizeof(lineBuf))) {
+    if (strlen(lineBuf) == 0) continue;
+    int lineId, s, fa, so, st, mo;
+    long lineDay;
+    if (sscanf(lineBuf, "%d,%ld,%d,%d,%d,%d,%d", &lineId, &lineDay, &s, &fa, &so, &st, &mo) != 7) continue;
+    if (lineId != id || lineDay != dayIndex) continue;
+    // Dosyada eskiden yeniye sirali - devam edip EN SON eslesen kaydi tutuyoruz.
+    out.hasData = true;
+    out.sleep = s; out.fatigue = fa; out.soreness = so; out.stress = st; out.mood = mo;
+  }
+  f.close();
+
+  if (out.hasData) {
+    out.sum = out.sleep + out.fatigue + out.soreness + out.stress + out.mood;
+    out.band = PlayerMath::wellnessBand(out.sum);
+  }
+  return out;
+}
+
 void RosterStore::load() {
   count_ = 0;
   nextId_ = 1;

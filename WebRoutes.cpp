@@ -48,9 +48,10 @@ static void handleData() {
   char timeBuf[16];
   formatTime(sessionSeconds, timeBuf, sizeof(timeBuf));
 
-  // ~550 bayt/slot (isim+uyari+ongoru+ACWR metinleri dahil en kotu durum) x
-  // HR_SLOTS + sarici icin genis bir pay - bkz. SLOT_COUNT (Config.h/HeartRateHardware.h).
-  static char json[HR_SLOTS * 600 + 64];
+  // ~650 bayt/slot (isim+uyari+ongoru+ACWR+HRV+HRR+wellness metinleri dahil en
+  // kotu durum) x HR_SLOTS + sarici icin genis bir pay - bkz. SLOT_COUNT
+  // (Config.h/HeartRateHardware.h).
+  static char json[HR_SLOTS * 750 + 64];
   int off = 0;
   off += snprintf(json + off, sizeof(json) - off, "{\"trainingTime\":\"%s\",\"slots\":[", timeBuf);
 
@@ -90,6 +91,11 @@ static void handleData() {
     int hrr2 = PlayerMath::calculateHrrDrop(hrrHr0[i], hrrHr120[i]);
     unsigned long hrrElapsedSec = hrrActive[i] ? (now - hrrStartMs[i]) / 1000UL : 0;
 
+    // Wellness anketi: bkz. Config.h "Gunluk Wellness Anketi" notu - panelden
+    // antrenman oncesi elle doldurulur, nabizdan bagimsiz.
+    RosterStore::WellnessEntry wellness;
+    if (hasPlayer && today >= 0) wellness = rosterStore.todayWellness(slotPlayerId[i], today);
+
     off += snprintf(json + off, sizeof(json) - off,
       "%s{\"slot\":%d,\"bandLabel\":\"%s\",\"enabled\":%s,"
       "\"playerId\":%d,\"playerName\":\"%s\",\"baselineReady\":%s,"
@@ -98,7 +104,8 @@ static void handleData() {
       "\"fatigue\":%d,\"riskStatus\":\"%s\",\"riskColor\":\"%s\",\"warning\":\"%s\",\"trendWarning\":\"%s\","
       "\"acwr\":%.2f,\"acwrBand\":\"%s\",\"acwrDays\":%d,\"monotony\":%.2f,\"monotonyBand\":\"%s\","
       "\"rrSupported\":%s,\"rmssd\":%.1f,\"sdnn\":%.1f,\"pnn50\":%.1f,"
-      "\"hrrActive\":%s,\"hrrElapsedSec\":%lu,\"hrrHr0\":%d,\"hrr1\":%d,\"hrr2\":%d}",
+      "\"hrrActive\":%s,\"hrrElapsedSec\":%lu,\"hrrHr0\":%d,\"hrr1\":%d,\"hrr2\":%d,"
+      "\"wellnessHasData\":%s,\"wellnessSum\":%d,\"wellnessBand\":\"%s\"}",
       i == 0 ? "" : ",",
       i, heartRateHardware.label(i), enabled ? "true" : "false",
       slotPlayerId[i], hasPlayer ? slotPlayerName[i] : "", baselineReady ? "true" : "false",
@@ -109,7 +116,8 @@ static void handleData() {
       fatigueScore[i], riskStatus[i], riskColor[i], lastWarning[i], trendWarning,
       acwr.acwr, acwr.band, acwr.daysWithData, acwr.monotony, acwr.monotonyBand,
       hrRrSupported[i] ? "true" : "false", hrRmssdMs[i], hrSdnnMs[i], hrPnn50[i],
-      hrrActive[i] ? "true" : "false", hrrElapsedSec, hrrHr0[i], hrr1, hrr2
+      hrrActive[i] ? "true" : "false", hrrElapsedSec, hrrHr0[i], hrr1, hrr2,
+      wellness.hasData ? "true" : "false", wellness.sum, wellness.band
     );
   }
 
@@ -212,6 +220,42 @@ static void handleStartHrrTest() {
 
   sendNoCacheHeaders();
   server.send(200, "application/json", "{\"started\":true}");
+}
+
+// =====================================================
+// Gunluk Wellness Anketi
+// =====================================================
+// id=<roster id>&sleep=&fatigue=&soreness=&stress=&mood= (her biri 1-10,
+// bkz. Config.h "Gunluk Wellness Anketi" notu). Bant/slota degil dogrudan
+// oyuncuya baglidir - antrenmandan once, band takilmadan da doldurulabilir.
+static void handleWellness() {
+  if (!server.hasArg("id")) {
+    server.send(400, "application/json", "{\"error\":\"id gerekli\"}");
+    return;
+  }
+  int id = server.arg("id").toInt();
+  if (rosterStore.findIndexById(id) < 0) {
+    server.send(400, "application/json", "{\"error\":\"oyuncu bulunamadi\"}");
+    return;
+  }
+
+  long today = currentDayIndex();
+  if (today < 0) {
+    server.send(400, "application/json", "{\"error\":\"cihaz henuz saat senkronu almadi, paneli acik tutup tekrar deneyin\"}");
+    return;
+  }
+
+  auto clamp1to10 = [](int v) { return v < 1 ? 1 : (v > 10 ? 10 : v); };
+  int sleep = clamp1to10(server.hasArg("sleep") ? server.arg("sleep").toInt() : 5);
+  int fatigue = clamp1to10(server.hasArg("fatigue") ? server.arg("fatigue").toInt() : 5);
+  int soreness = clamp1to10(server.hasArg("soreness") ? server.arg("soreness").toInt() : 5);
+  int stress = clamp1to10(server.hasArg("stress") ? server.arg("stress").toInt() : 5);
+  int mood = clamp1to10(server.hasArg("mood") ? server.arg("mood").toInt() : 5);
+
+  rosterStore.recordWellness(id, today, sleep, fatigue, soreness, stress, mood);
+
+  sendNoCacheHeaders();
+  server.send(200, "application/json", "{\"saved\":true}");
 }
 
 // =====================================================
@@ -474,6 +518,7 @@ void registerWebRoutes() {
   server.on("/addplayer", HTTP_POST, handleAddPlayer);
   server.on("/assignslot", HTTP_POST, handleAssignSlot);
   server.on("/starthrrtest", HTTP_POST, handleStartHrrTest);
+  server.on("/wellness", HTTP_POST, handleWellness);
   server.on("/reset", handleReset);
   server.on("/resetseason", handleResetSeason);
   server.on("/team", handleTeam);

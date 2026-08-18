@@ -56,6 +56,21 @@ public:
   // en yeniler tutulur) gunluk yuklerinden ACWR/monotonluk hesaplar.
   PlayerMath::AcwrResult acwrForPlayer(int id, long todayIdx) const;
 
+  // ---------------- Gunluk Wellness Anketi (bkz. Config.h notu) ----------------
+  // Ayni gun icin tekrar gonderilirse UZERINE YAZILMAZ (dosyaya yeni satir
+  // eklenir, okurken O GUNUN EN SON kaydi kullanilir) - boylece bir oyuncu
+  // anketi yanlislikla iki kez doldurursa ikincisi gecerli olur.
+  void recordWellness(int id, long dayIndex, int sleep, int fatigue, int soreness, int stress, int mood);
+
+  struct WellnessEntry {
+    bool hasData = false;
+    int sleep = 0, fatigue = 0, soreness = 0, stress = 0, mood = 0;
+    int sum = 0;                          // 5-50, dusuk = iyi
+    const char* band = "Veri yok";
+  };
+  // O oyuncunun dayIndex gunu icin (varsa) en son kaydedilen anketi doner.
+  WellnessEntry todayWellness(int id, long dayIndex) const;
+
 private:
   RosterPlayer players_[MAX_ROSTER_PLAYERS];
   int count_ = 0;

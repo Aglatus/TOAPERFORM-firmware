@@ -243,3 +243,16 @@ static const float ACWR_LAMBDA_CHRONIC = 2.0f / (28.0f + 1.0f);
 static const long ACWR_MAX_LOOKBACK_DAYS = 42;  // 28g kronik pencere + isinma payi
 static const char* const LOADS_FILE = "/loads.dat";  // her oyuncunun tarihli gunluk yuku (CSV: playerId,dayIndex,load)
 static const int MAX_LOAD_ENTRIES_PER_PLAYER = 50;   // ACWR_MAX_LOOKBACK_DAYS + pay - okurken RAM'de tutulan tavan
+
+// ---------------- Gunluk Wellness Anketi (Hooper Index tarzi) ----------------
+// Kaynak: Hooper SL, Mackinnon LT ve ark. - basit 5 soruluk subjektif gunluk
+// hazirlik anketi, spor bilimi literaturunde yaygin kullanilir. HER SORU 1
+// (en iyi/hic) - 10 (en kotu/cok) araliginda, AYNI YONDE (dusuk = iyi) - bu
+// yuzden 5 sorunun toplami dogrudan bir "wellness skoru" olusturur (5=en iyi,
+// 50=en kotu). Bantlar (nabiz) ile ayni platformda ama TAMAMEN BAGIMSIZ bir
+// veri kaynagi - antrenman ONCESI, elle, panelden girilir.
+// ESIKLER (5-50 arasi toplam skor) muhendislik tahminidir, klinik esik degil -
+// sahada gercek veriyle ayarlanmali.
+static const char* const WELLNESS_FILE = "/wellness.dat";  // CSV: playerId,dayIndex,sleep,fatigue,soreness,stress,mood
+static const int WELLNESS_GOOD_MAX = 20;    // bu toplamin ALTINDA/ESITI "iyi"
+static const int WELLNESS_MODERATE_MAX = 32;  // bu toplamin ALTINDA/ESITI "orta", ustu "kotu"

@@ -115,4 +115,11 @@ HrvMetrics calculateHrv(const uint16_t* rrMs, int count);
 // hrAtMark < 0 ise -1.
 int calculateHrrDrop(int hr0, int hrAtMark);
 
+// ---------------- Wellness (Hooper Index tarzi, 5 soru) ----------------
+// Kaynak: Hooper SL, Mackinnon LT ve ark. - 5 soru (uyku/yorgunluk/agri/
+// stres/ruh hali), her biri 1 (en iyi) - 10 (en kotu). sum: bu 5 sorunun
+// toplami (5-50, dusuk = iyi). Bkz. Config.h WELLNESS_GOOD_MAX/
+// WELLNESS_MODERATE_MAX - esikler muhendislik tahmini, klinik esik degil.
+const char* wellnessBand(int sum);
+
 }  // namespace PlayerMath
