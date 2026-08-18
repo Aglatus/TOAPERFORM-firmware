@@ -56,6 +56,19 @@ body{
   margin:auto;
   padding:16px;
 }
+/* Telefonda 520px dar sutun dogru, ama iPad/tablet gibi genis ekranlarda ayni
+   sinir tum sayfayi ortada kucuk bir serit halinde birakiyordu (kullanici
+   bulgusu, 2026-08: "ortalanmis durumda, tam ekrana sigdir"). Genis ekranlarda
+   container'i acip, icindeki grid'leri de ekstra genislige gore sutunlayip
+   bosluk yerine icerigi buyutuyoruz.*/
+@media (min-width: 700px){
+  .container{ max-width:920px; }
+  .grid{ grid-template-columns:repeat(4, 1fr); }
+}
+@media (min-width: 1100px){
+  .container{ max-width:1180px; }
+  .team-grid{ grid-template-columns:repeat(4, 1fr); }
+}
 .header{
   position:relative;
   background:linear-gradient(165deg,#101d14 0%,#0b140d 55%,var(--bg) 100%);
