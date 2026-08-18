@@ -713,29 +713,51 @@ function submitWellnessNow(slot){
   .catch(e=>{});
 }
 
-// Her enabled+atanmis slotu tek satirda ozetleyen takim panosu - koc tum
-// oyunculari tek bakista gorur, tek tek kart acmasi gerekmez.
+// Her enabled+atanmis slotu bir "oyuncu karti" olarak ozetleyen takim panosu -
+// koc tum oyunculari tek bakista gorur, tek tek kart acmasi gerekmez. Ayni
+// kart tasarim dilini (bkz. .card/.zone-badge/.legend-chip CSS) kullanir,
+// sadece kompakt bir ozet halinde - Polar Team Pro tarzi renkli/gorsel bir
+// takim ekrani hedeflenir.
 function renderTeamDashboard(slots){
-  const body = document.getElementById('teamDashBody');
+  const grid = document.getElementById('teamDashGrid');
   const rows = slots.filter(s => s.enabled && s.playerId !== 0);
 
   if (rows.length === 0) {
-    body.innerHTML = '<tr><td colspan="6" style="padding:10px;color:var(--muted)">Henuz oyuncu atanmadi</td></tr>';
+    grid.innerHTML = '<div class="card big" id="teamDashEmpty"><div class="value mini" style="color:var(--muted)">Henuz oyuncu atanmadi</div></div>';
     return;
   }
 
-  body.innerHTML = rows.map(s => {
+  // En yuksek riskli oyuncu en ustte - koc antrenman basinda/sirasinda ilk
+  // bakista kimin dikkat istedigini gorsun (KRITIK > UYARI > NORMAL, esit
+  // durumda yorgunluk skoruna gore).
+  const riskOrder = { 'KRITIK': 0, 'UYARI': 1, 'NORMAL': 2 };
+  const sorted = [...rows].sort((a, b) => {
+    const ra = riskOrder[a.riskStatus] ?? 3;
+    const rb = riskOrder[b.riskStatus] ?? 3;
+    if (ra !== rb) return ra - rb;
+    return b.fatigue - a.fatigue;
+  });
+
+  grid.innerHTML = sorted.map(s => {
     const bpmTxt = s.fresh ? s.bpm : '--';
-    const acwrTxt = s.acwrDays >= 3 ? s.acwr.toFixed(2) + ' (' + s.acwrBand + ')' : 'Yetersiz veri';
-    const wellnessTxt = s.wellnessHasData ? (s.wellnessSum + '/50 (' + s.wellnessBand + ')') : '--';
-    return '<tr style="border-top:1px solid var(--border)">'
-      + '<td style="padding:6px">' + s.playerName + '</td>'
-      + '<td style="padding:6px">' + bpmTxt + '</td>'
-      + '<td style="padding:6px">' + s.fatigue + '/100</td>'
-      + '<td style="padding:6px"><span class="legend-chip" style="background:' + s.riskColor + ';color:#020617">' + s.riskStatus + '</span></td>'
-      + '<td style="padding:6px">' + acwrTxt + '</td>'
-      + '<td style="padding:6px">' + wellnessTxt + '</td>'
-      + '</tr>';
+    const zoneLabel = HR_ZONE_LABELS[s.fresh ? s.zone : 0] || '--';
+    const zoneColor = HR_ZONE_COLORS[s.fresh ? s.zone : 0] || 'var(--muted)';
+    const acwrTxt = s.acwrDays >= 3 ? s.acwr.toFixed(2) : '--';
+    const wellnessTxt = s.wellnessHasData ? (s.wellnessSum + '/50') : '--';
+
+    return `
+      <div class="card" style="border-left:4px solid ${s.riskColor}">
+        <div class="label">${s.playerName}</div>
+        <div class="value" style="color:${s.riskColor}">${bpmTxt} <span class="unit">bpm</span></div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">
+          <span class="zone-badge" style="background:${zoneColor}">${zoneLabel}</span>
+          <span class="legend-chip" style="background:${s.riskColor};color:#020617">${s.riskStatus} ${s.fatigue}/100</span>
+        </div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">
+          <span class="legend-chip">ACWR: ${acwrTxt}</span>
+          <span class="legend-chip">Wellness: ${wellnessTxt}</span>
+        </div>
+      </div>`;
   }).join('');
 }
 
@@ -931,22 +953,10 @@ function resetSeasonNow(){
   </div>
 
   <div class="section-title">Takim Risk Panosu</div>
-  <div class="card big" style="overflow-x:auto">
-    <table id="teamDashTable" style="width:100%;border-collapse:collapse;font-size:14px">
-      <thead>
-        <tr style="text-align:left;color:var(--muted)">
-          <th style="padding:6px">Oyuncu</th>
-          <th style="padding:6px">Nabiz</th>
-          <th style="padding:6px">Yorgunluk</th>
-          <th style="padding:6px">Risk</th>
-          <th style="padding:6px">ACWR</th>
-          <th style="padding:6px">Wellness</th>
-        </tr>
-      </thead>
-      <tbody id="teamDashBody">
-        <tr><td colspan="6" style="padding:10px;color:var(--muted)">Henuz oyuncu atanmadi</td></tr>
-      </tbody>
-    </table>
+  <div class="grid" id="teamDashGrid">
+    <div class="card big" id="teamDashEmpty">
+      <div class="value mini" style="color:var(--muted)">Henuz oyuncu atanmadi</div>
+    </div>
   </div>
 
   <!-- Bant/oyuncu kartlari sunucudan gelen slot sayisina (enabled=true olanlar)
