@@ -105,6 +105,7 @@ static void handleData() {
       "\"pctMax\":%.0f,\"zone\":%d,\"zoneSec\":[%lu,%lu,%lu,%lu,%lu],"
       "\"fatigue\":%d,\"riskStatus\":\"%s\",\"riskColor\":\"%s\",\"warning\":\"%s\",\"trendWarning\":\"%s\","
       "\"acwr\":%.2f,\"acwrBand\":\"%s\",\"acwrDays\":%d,\"monotony\":%.2f,\"monotonyBand\":\"%s\","
+      "\"trimp\":%.1f,"
       "\"rrSupported\":%s,\"rmssd\":%.1f,\"sdnn\":%.1f,\"pnn50\":%.1f,"
       "\"hrrActive\":%s,\"hrrElapsedSec\":%lu,\"hrrHr0\":%d,\"hrr1\":%d,\"hrr2\":%d,"
       "\"wellnessHasData\":%s,\"wellnessSum\":%d,\"wellnessBand\":\"%s\"}",
@@ -117,6 +118,7 @@ static void handleData() {
       hrZoneSeconds[i][0], hrZoneSeconds[i][1], hrZoneSeconds[i][2], hrZoneSeconds[i][3], hrZoneSeconds[i][4],
       fatigueScore[i], riskStatus[i], riskColor[i], lastWarning[i], trendWarning,
       acwr.acwr, acwr.band, acwr.daysWithData, acwr.monotony, acwr.monotonyBand,
+      hrTrimpAccum[i],
       hrRrSupported[i] ? "true" : "false", hrRmssdMs[i], hrSdnnMs[i], hrPnn50[i],
       hrrActive[i] ? "true" : "false", hrrElapsedSec, hrrHr0[i], hrr1, hrr2,
       wellness.hasData ? "true" : "false", wellness.sum, wellness.band
@@ -133,14 +135,14 @@ static void handleData() {
 // Oyuncu Roster'i (ortak havuz) + Bant Atamasi
 // =====================================================
 static void handleRosterList() {
-  static char json[MAX_ROSTER_PLAYERS * 60 + 20];
+  static char json[MAX_ROSTER_PLAYERS * 70 + 20];
   int off = 0;
   off += snprintf(json + off, sizeof(json) - off, "[");
   for (int i = 0; i < rosterStore.count(); i++) {
     const RosterPlayer& p = rosterStore.playerAt(i);
     off += snprintf(json + off, sizeof(json) - off,
-      "%s{\"id\":%d,\"name\":\"%s\",\"maxHrEver\":%.0f}",
-      i == 0 ? "" : ",", p.id, p.name, p.maxHrEver);
+      "%s{\"id\":%d,\"name\":\"%s\",\"maxHrEver\":%.0f,\"restingHr\":%.0f}",
+      i == 0 ? "" : ",", p.id, p.name, p.maxHrEver, p.restingHr);
   }
   off += snprintf(json + off, sizeof(json) - off, "]");
 
@@ -196,6 +198,25 @@ static void handleAssignSlot() {
 
   sendNoCacheHeaders();
   server.send(200, "application/json", "{\"assigned\":true}");
+}
+
+// id=<roster id>&restingHr=<bpm> - TRIMP hesabi icin dinlenik nabiz (bkz.
+// Config.h TRIMP notu). Opsiyonel; girilmezse HR_REST_DEFAULT kullanilir.
+static void handleSetRestingHr() {
+  if (!server.hasArg("id") || !server.hasArg("restingHr")) {
+    server.send(400, "application/json", "{\"error\":\"id ve restingHr gerekli\"}");
+    return;
+  }
+  int id = server.arg("id").toInt();
+  if (rosterStore.findIndexById(id) < 0) {
+    server.send(400, "application/json", "{\"error\":\"oyuncu bulunamadi\"}");
+    return;
+  }
+
+  rosterStore.setRestingHr(id, server.arg("restingHr").toFloat());
+
+  sendNoCacheHeaders();
+  server.send(200, "application/json", "{\"saved\":true}");
 }
 
 // =====================================================
@@ -468,6 +489,7 @@ void registerWebRoutes() {
   server.on("/roster", handleRosterList);
   server.on("/addplayer", HTTP_POST, handleAddPlayer);
   server.on("/assignslot", HTTP_POST, handleAssignSlot);
+  server.on("/setrestinghr", HTTP_POST, handleSetRestingHr);
   server.on("/starthrrtest", HTTP_POST, handleStartHrrTest);
   server.on("/wellness", HTTP_POST, handleWellness);
   server.on("/reset", handleReset);

@@ -34,6 +34,7 @@ int RosterStore::addPlayer(const char* rawName) {
   p.sessionCount = 0;
   p.totalLoad = 0;
   p.maxHrEver = 0;
+  p.restingHr = 0;
   count_++;
 
   saveAll();
@@ -48,6 +49,15 @@ void RosterStore::updateAfterSession(int id, float sessionLoad, float sessionMax
   players_[idx].totalLoad += sessionLoad;
   if (sessionMaxHr > players_[idx].maxHrEver) players_[idx].maxHrEver = sessionMaxHr;
 
+  saveAll();
+}
+
+void RosterStore::setRestingHr(int id, float restingHr) {
+  int idx = findIndexById(id);
+  if (idx < 0) return;
+  if (restingHr < 30 || restingHr > 120) return;  // makul fizyolojik aralik disi
+
+  players_[idx].restingHr = restingHr;
   saveAll();
 }
 
@@ -193,9 +203,12 @@ void RosterStore::load() {
     // NOT: "%23" alan genisligi ROSTER_NAME_MAX-1'e (Config.h) sabit yazildi -
     // sscanf format string'i derleme zamaninda sabit olmali, ROSTER_NAME_MAX
     // degisirse burasi da elle guncellenmeli.
-    int scanned = sscanf(lineBuf, "%d,%23[^,],%d,%f,%f",
-      &p.id, nameBuf, &p.sessionCount, &p.totalLoad, &p.maxHrEver);
-    if (scanned != 5) continue;
+    // restingHr (6. alan) SONRADAN eklendi - eski (5 alanli) satirlar hala
+    // gecerli kabul edilir, o durumda restingHr 0 (varsayilan, HR_REST_DEFAULT
+    // kullanilir) kalir (bkz. RosterPlayer::restingHr baslangic degeri).
+    int scanned = sscanf(lineBuf, "%d,%23[^,],%d,%f,%f,%f",
+      &p.id, nameBuf, &p.sessionCount, &p.totalLoad, &p.maxHrEver, &p.restingHr);
+    if (scanned != 5 && scanned != 6) continue;
 
     strncpy(p.name, nameBuf, sizeof(p.name) - 1);
     p.name[sizeof(p.name) - 1] = '\0';
@@ -213,8 +226,8 @@ void RosterStore::saveAll() {
   char buf[96];
   for (int i = 0; i < count_; i++) {
     const RosterPlayer& p = players_[i];
-    snprintf(buf, sizeof(buf), "%d,%s,%d,%.1f,%.0f",
-      p.id, p.name, p.sessionCount, p.totalLoad, p.maxHrEver);
+    snprintf(buf, sizeof(buf), "%d,%s,%d,%.1f,%.0f,%.0f",
+      p.id, p.name, p.sessionCount, p.totalLoad, p.maxHrEver, p.restingHr);
     f.println(buf);
   }
   f.close();

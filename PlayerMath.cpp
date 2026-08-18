@@ -143,6 +143,17 @@ AcwrResult calculateAcwr(const DayLoad* entries, int entryCount, long todayIdx) 
   return out;
 }
 
+float calculateTrimpTick(int bpm, float hrRest, float hrMax, float minutesElapsed) {
+  if (hrMax <= hrRest) return 0;
+
+  float hrRatio = (bpm - hrRest) / (hrMax - hrRest);
+  if (hrRatio < 0) hrRatio = 0;
+  if (hrRatio > 1) hrRatio = 1;
+
+  float y = TRIMP_COEFF_A * expf(TRIMP_COEFF_B * hrRatio);
+  return minutesElapsed * hrRatio * y;
+}
+
 HrvMetrics calculateHrv(const uint16_t* rrMs, int count) {
   HrvMetrics out;
   if (count < 2) return out;

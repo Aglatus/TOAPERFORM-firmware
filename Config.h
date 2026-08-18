@@ -208,6 +208,24 @@ static const float HR_FATIGUE_BASELINE_PCT = 60.0f;  // bu yuzdenin ALTINDA katk
 static const float HR_LOAD_DIVISOR = 1000.0f;        // birikmis "asiri yuzde-saniye"yi skor olcegine indirger
 static const float PERSONAL_MIN_HR_SAMPLE = 90.0f;   // bpm - bunun altinda sezon rekoru anlamli sayilmaz
 
+// ---------------- TRIMP (Banister, eksponansiyel agirlikli antrenman yuku) ----------------
+// Kaynak: Banister EW, "Modeling Elite Athletic Performance" (1991) - yukaridaki
+// basitlestirilmis ic yukten FARKLI, literatur-standart bir metrik: gercek
+// dinlenik nabiz (HRrest) ile kisisel tavan (burada maxHrEver kullanilir, gercek
+// laboratuvar HRmax degil) arasindaki HR-rezerv oranini eksponansiyel agirliklandirir.
+// Amac: ACWR'nin su anki RPE-tahminli gunluk yuk girdisine, RPE'ye BAGIMLI
+// OLMAYAN objektif bir alternatif/dogrulama saglamak.
+// NOT (cinsiyet): Banister katsayilari erkek/kadin icin farklidir (0.64/1.92 ile
+// 0.86/1.67) - roster'da cinsiyet bilgisi TUTULMADIGI icin burada SADECE erkek
+// katsayisi kullanilir; kadin oyuncularda TRIMP degeri gercekte olmasi
+// gerekenden hafifce farkli cikabilir, kesin bir olcum degil karsilastirmali
+// bir gostergedir.
+static const float TRIMP_COEFF_A = 0.64f;
+static const float TRIMP_COEFF_B = 1.92f;
+// Oyuncu dinlenik nabzini hic girmediyse (bkz. RosterStore::setRestingHr)
+// kullanilan varsayilan - genel yetiskin ortalamasina yakin kaba bir tahmin.
+static const float HR_REST_DEFAULT = 60.0f;
+
 // ---------------- Nabiz Bolgeleri (5-bolge %HRmax modeli) ----------------
 // Standart spor bilimi 5-bolge modeli (Z1 cok hafif .. Z5 maksimal efor),
 // kisisel sezon rekoru nabza (maxHrEver) gore yuzdelik esiklerle tanimlanir -

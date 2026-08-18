@@ -61,6 +61,7 @@ extern bool heartRateSignalFresh[HR_SLOTS];
 
 extern float sessionMaxHr[HR_SLOTS];   // bu oturumda o slotun en yuksek GUVENILIR bpm'i
 extern float hrLoadAccum[HR_SLOTS];    // nabiz tabanli ic yuk birikimi - bkz. PlayerMath.h FatigueInputs::hrLoadAccum
+extern float hrTrimpAccum[HR_SLOTS];   // bu oturumda biriken TRIMP (Banister, bkz. Config.h/PlayerMath.h TRIMP notlari)
 extern float hrPctOfMax[HR_SLOTS];     // anlik (bpm / o slotun kisisel rekoru) * 100 - guvenilir veri yoksa 0
 extern int hrZoneNow[HR_SLOTS];        // anlik bolge, 0 (esik alti) veya 1-5 (Z1..Z5)
 extern unsigned long hrZoneSeconds[HR_SLOTS][5];  // bu oturumda Z1..Z5'te gecirilen saniye (index 0=Z1..4=Z5)

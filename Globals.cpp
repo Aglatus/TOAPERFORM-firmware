@@ -24,6 +24,7 @@ bool heartRateSignalFresh[HR_SLOTS];
 
 float sessionMaxHr[HR_SLOTS];
 float hrLoadAccum[HR_SLOTS];
+float hrTrimpAccum[HR_SLOTS];
 float hrPctOfMax[HR_SLOTS];
 int hrZoneNow[HR_SLOTS];
 unsigned long hrZoneSeconds[HR_SLOTS][5];
@@ -97,6 +98,7 @@ void resetSession() {
 
     sessionMaxHr[i] = 0;
     hrLoadAccum[i] = 0;
+    hrTrimpAccum[i] = 0;
     hrPctOfMax[i] = 0;
     hrZoneNow[i] = 0;
     for (int z = 0; z < 5; z++) hrZoneSeconds[i][z] = 0;
