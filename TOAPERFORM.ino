@@ -162,15 +162,10 @@ void loop() {
       // ama kisisel rekor olmadan yuzde/bolge/yorgunluk hesaplanamaz - bu
       // yuzden asagidaki blok, atanmamis slotu 0'da/NORMAL'de tutar.
       float personalMaxHr = 0;
-      float restingHr = HR_REST_DEFAULT;
       bool hasPlayer = (slotPlayerId[i] != 0);
       if (hasPlayer) {
         int idx = rosterStore.findIndexById(slotPlayerId[i]);
-        if (idx >= 0) {
-          personalMaxHr = rosterStore.playerAt(idx).maxHrEver;
-          float r = rosterStore.playerAt(idx).restingHr;
-          if (r > 0) restingHr = r;
-        }
+        if (idx >= 0) personalMaxHr = rosterStore.playerAt(idx).maxHrEver;
       }
 
       PlayerMath::FatigueInputs fi;
@@ -184,10 +179,6 @@ void loop() {
         pctOfPersonalMaxHr = (heartRateBpm[i] / personalMaxHr) * 100.0f;
         float hrExcess = pctOfPersonalMaxHr - HR_FATIGUE_BASELINE_PCT;
         if (hrExcess > 0) hrLoadAccum[i] += hrExcess;
-
-        // TRIMP (Banister, bkz. Config.h/PlayerMath.h TRIMP notlari) - bu blok
-        // 1Hz calistigi icin minutesElapsed sabit 1/60 dakika.
-        hrTrimpAccum[i] += PlayerMath::calculateTrimpTick(heartRateBpm[i], restingHr, personalMaxHr, 1.0f / 60.0f);
       }
       fi.hrLoadAccum = hrLoadAccum[i];
 

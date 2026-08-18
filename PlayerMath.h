@@ -85,15 +85,6 @@ struct AcwrResult {
 // todayIdx: bugunun gun-index'i (epoch saniye / 86400).
 AcwrResult calculateAcwr(const DayLoad* entries, int entryCount, long todayIdx);
 
-// ---------------- TRIMP (Banister, eksponansiyel agirlikli) ----------------
-// Kaynak: Banister EW 1991 (bkz. Config.h TRIMP notu - SADECE erkek katsayisi
-// kullanilir, cinsiyet ayrimi yok). hrRatio = (bpm-hrRest)/(hrMax-hrRest),
-// [0,1]'e kirpilir. minutesElapsed: bu hesabin kapsadigi sure (dakika) - caller
-// saniyede bir cagiriyorsa 1/60 vermeli, boylece tek bir andaki deger degil,
-// SESSION BOYUNCA BIRIKTIRILEN bir toplam elde edilir (bkz. Globals.h
-// hrTrimpAccum). hrMax <= hrRest ise (gecersiz baseline) 0 doner.
-float calculateTrimpTick(int bpm, float hrRest, float hrMax, float minutesElapsed);
-
 // ---------------- HRV (RR-interval tabanli, zaman-alani metrikleri) ----------------
 // RMSSD, SDNN, pNN50: standart, hesaplama olarak hafif (FFT gerektirmez)
 // zaman-alani HRV metrikleri. ONEMLI: bu fonksiyon SAF matematiktir, girdinin

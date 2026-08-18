@@ -23,7 +23,6 @@ struct RosterPlayer {
   int sessionCount = 0;
   float totalLoad = 0;
   float maxHrEver = 0;   // bpm - bu oyuncunun kisisel nabiz tavani (bkz. Config.h HR_ZONEn_MIN_PCT)
-  float restingHr = 0;   // bpm - TRIMP hesabi icin (bkz. Config.h TRIMP notu), girilmediyse 0 (HR_REST_DEFAULT kullanilir)
 };
 
 class RosterStore {
@@ -44,10 +43,6 @@ public:
   // Bir antrenman sonunda (o slota atanmis oyuncunun) rekorlarini gunceller
   // ve dosyaya yazar. sessionMaxHr rekor kirdiysa maxHrEver guncellenir.
   void updateAfterSession(int id, float sessionLoad, float sessionMaxHr);
-
-  // Oyuncunun dinlenik nabzini kaydeder (TRIMP hesabi icin, bkz. Config.h TRIMP
-  // notu). Makul araligin (30-120 bpm) disindaki degerler sessizce yok sayilir.
-  void setRestingHr(int id, float restingHr);
 
   // ---------------- ACWR / Monotonluk (bkz. Config.h "ACWR" notu) ----------------
   // Bir antrenman sonunda o oyuncunun GUNLUK toplam yukune (dayIndex = epoch

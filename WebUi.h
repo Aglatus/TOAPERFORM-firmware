@@ -508,15 +508,6 @@ function slotCardHtml(slot){
       </select>
     </div>
     <div class="card big">
-      <div class="label">Dinlenik Nabiz (TRIMP icin, opsiyonel)</div>
-      <div style="display:flex;gap:8px;margin-top:8px">
-        <input id="restingHr${slot}" type="number" min="30" max="120" placeholder="orn. 58"
-          style="flex:1;padding:10px;border-radius:10px;border:1px solid var(--border);background:var(--card2);color:var(--text)">
-        <button class="btn" style="width:auto;padding:10px 16px" onclick="saveRestingHrNow(${slot})">Kaydet</button>
-      </div>
-      <div class="legend-chip" style="margin-top:6px;color:var(--muted-light)">Girilmezse 60 bpm varsayilir</div>
-    </div>
-    <div class="card big">
       <div class="label">Gunluk Wellness Anketi (antrenman oncesi, 1=iyi - 10=kotu)</div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px">
         <label style="font-size:13px">Uyku kalitesi (kotu)<input type="number" min="1" max="10" value="5" id="wSleep${slot}" style="width:100%;padding:8px;margin-top:4px;border-radius:8px;border:1px solid var(--border);background:var(--card2);color:var(--text)"></label>
@@ -582,11 +573,6 @@ function slotCardHtml(slot){
         <div class="label">Antrenman Monotonlugu</div>
         <div class="value"><span id="monotonyValue${slot}">--</span></div>
         <div class="legend-chip" id="monotonyBand${slot}" style="margin-top:6px;color:var(--muted-light)">Yetersiz veri</div>
-      </div>
-      <div class="card">
-        <div class="label">TRIMP (Banister, bu oturum)</div>
-        <div class="value"><span id="trimpValue${slot}">--</span> <span class="unit">puan</span></div>
-        <div class="legend-chip" style="margin-top:6px;color:var(--muted-light)">Objektif nabiz tabanli yuk</div>
       </div>
       <div class="card" id="rmssdCard${slot}" style="display:none">
         <div class="label">HRV (anlik: RMSSD / SDNN / pNN50)</div>
@@ -691,7 +677,6 @@ function renderSlot(slot, s){
   document.getElementById('acwrBand'+slot).innerText = s.acwrBand;
   document.getElementById('monotonyValue'+slot).innerText = s.acwrDays >= 3 ? s.monotony.toFixed(2) : '--';
   document.getElementById('monotonyBand'+slot).innerText = s.monotonyBand;
-  document.getElementById('trimpValue'+slot).innerText = s.baselineReady ? s.trimp.toFixed(1) : '--';
 
   // HRV karti sadece cihaz/mod bu veriyi GERCEKTEN gonderiyorsa gorunur -
   // Polar Sense bu yayin modunda gondermeyebilir (bkz. Config.h notu).
@@ -727,14 +712,6 @@ function renderSlot(slot, s){
   // yapiyorsa (odakta) dokunmaz.
   const sel = document.getElementById('playerSelect'+slot);
   if (document.activeElement !== sel) sel.value = String(s.playerId);
-
-  // Dinlenik nabiz girisini rosterCache'teki (bu banda atanmis oyuncunun)
-  // kayitli degeriyle senkron tutar - kullanici o an yaziyorsa dokunmaz.
-  const restingInput = document.getElementById('restingHr'+slot);
-  if (document.activeElement !== restingInput) {
-    const player = rosterCache.find(p => p.id === s.playerId);
-    restingInput.value = (player && player.restingHr > 0) ? player.restingHr : '';
-  }
 }
 
 // Sunucu HR_SLOTS (Config.h HR_DEVICE_MAC[] boyutu, su an 9) kadar slot
@@ -811,23 +788,6 @@ function assignSlotNow(slot){
   const id = sel.value;
   fetch('/assignslot?slot=' + slot + '&id=' + id, { method: 'POST', cache: 'no-store' })
   .then(() => setTimeout(loadData, 200))
-  .catch(e=>{});
-}
-
-function saveRestingHrNow(slot){
-  const sel = document.getElementById('playerSelect'+slot);
-  const playerId = parseInt(sel.value, 10);
-  if (!playerId) { alert('Once bu banda bir oyuncu atayin'); return; }
-
-  const val = parseFloat(document.getElementById('restingHr'+slot).value);
-  if (!val || val < 30 || val > 120) { alert('Gecerli bir dinlenik nabiz girin (30-120 bpm)'); return; }
-
-  fetch('/setrestinghr?id=' + playerId + '&restingHr=' + val, { method: 'POST', cache: 'no-store' })
-  .then(r=>r.json())
-  .then(res=>{
-    if (res.error) alert(res.error);
-    else loadRoster();
-  })
   .catch(e=>{});
 }
 
@@ -1052,7 +1012,7 @@ function renderCardFocusEntry(s){
     </div>`;
 }
 // E) DETAYLI TABLO - TUM oyuncular TUM metrikleriyle (nabiz/bolge/yorgunluk/
-// ACWR/monotonluk/TRIMP/HRV/HRR/Wellness) TEK tabloda yan yana - Polar Team
+// ACWR/monotonluk/HRV/HRR/Wellness) TEK tabloda yan yana - Polar Team
 // Pro'nun "Whole Team" gorunumune en yakin mod, koc tek tek karta girmeden
 // butun takimi karsilastirir. Dar telefon ekraninda yatay kaydirilir (bkz.
 // .detail-table-wrap), satira dokununca o oyuncunun Odak Modu'nu acar.
@@ -1064,7 +1024,6 @@ function renderTeamDetailTable(sorted){
     const zoneTxt = s.fresh ? (HR_ZONE_LABELS[s.zone] || '--') : '--';
     const acwrTxt = s.acwrDays >= 3 ? s.acwr.toFixed(2) : '--';
     const monoTxt = s.acwrDays >= 3 ? s.monotony.toFixed(2) : '--';
-    const trimpTxt = s.baselineReady ? s.trimp.toFixed(1) : '--';
     const hrvTxt = s.rrSupported ? (s.rmssd.toFixed(0) + '/' + s.sdnn.toFixed(0) + '/' + s.pnn50.toFixed(0) + '%') : '--';
     const hrrTxt = (s.hrr1 >= 0 || s.hrr2 >= 0)
       ? ((s.hrr1 >= 0 ? s.hrr1 + 'bpm' : '--') + ' / ' + (s.hrr2 >= 0 ? s.hrr2 + 'bpm' : '--'))
@@ -1078,7 +1037,6 @@ function renderTeamDetailTable(sorted){
       <td><span class="legend-chip" style="display:inline-flex;background:${s.riskColor};color:#020617;padding:2px 8px;border-radius:999px;font-size:10px">${s.riskStatus} ${s.fatigue}</span></td>
       <td>${acwrTxt} <span style="color:var(--muted)">(${s.acwrBand})</span></td>
       <td>${monoTxt}</td>
-      <td>${trimpTxt}</td>
       <td>${hrvTxt}</td>
       <td>${hrrTxt}</td>
       <td>${wellTxt}</td>
@@ -1088,7 +1046,7 @@ function renderTeamDetailTable(sorted){
   return `<div class="detail-table-wrap"><table class="detail-table">
     <thead><tr>
       <th>Oyuncu</th><th>Nabiz</th><th>%HRmax</th><th>Bolge</th><th>Yorgunluk</th>
-      <th>ACWR</th><th>Monoton.</th><th>TRIMP</th><th>HRV (RMSSD/SDNN/pNN50)</th><th>HRR (1dk/2dk)</th><th>Wellness</th>
+      <th>ACWR</th><th>Monoton.</th><th>HRV (RMSSD/SDNN/pNN50)</th><th>HRR (1dk/2dk)</th><th>Wellness</th>
     </tr></thead>
     <tbody>${rows}</tbody>
   </table></div>`;
