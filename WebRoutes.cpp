@@ -279,6 +279,12 @@ static void handleReset() {
     if (rpe < 0 || rpe > 10) rpe = 0;
   }
 
+  // Mac Gunu vs Antrenman ayrimi (bkz. Config.h MATCH_LOAD_MULTIPLIER notu) -
+  // sadece ACWR'ye giren GUNLUK yuku carpar, "type" gonderilmezse (eski
+  // istemciler/varsayilan) antrenman sayilir, hicbir sey degismez.
+  bool isMatch = server.hasArg("type") && server.arg("type") == "match";
+  float loadMultiplier = isMatch ? MATCH_LOAD_MULTIPLIER : 1.0f;
+
   // Klasik (tek) antrenman gecmisi - hep "Bant 1"/slot 0 verisiyle, roster'dan
   // BAGIMSIZ (bkz. SeasonStore.h / RosterStore.h yorumlari - iki ayri ozellik).
   seasonStore.saveSessionToHistory(sessionTs, rpe, sessionSeconds, fatigueScore[0], sessionMaxHr[0]);
@@ -294,13 +300,16 @@ static void handleReset() {
       float sessionLoad = loadIsEstimated
         ? (sessionMinutes * (fatigueScore[i] / 10.0f))
         : (sessionMinutes * rpe);
+      // NOT: kisisel rekor/toplam yuk (updateAfterSession, "omur boyu"
+      // istatistik) CARPILMAMIS ham yukle guncellenir - mac agirligi SADECE
+      // ACWR'nin GUNLUK yukune uygulanir, kariyer toplamini sismesin diye.
       rosterStore.updateAfterSession(slotPlayerId[i], sessionLoad, sessionMaxHr[i]);
 
-      // ACWR icin: bu antrenmanin yukunu o oyuncunun GUNLUK toplamina ekler
-      // (bkz. Config.h ACWR notu). sessionTs yoksa (telefon saatini hic
+      // ACWR icin: bu antrenmanin/macin yukunu o oyuncunun GUNLUK toplamina
+      // ekler (bkz. Config.h ACWR notu). sessionTs yoksa (telefon saatini hic
       // gondermediyse) gun-indeksi bilinmez, atlanir.
       if (sessionTs > 0) {
-        rosterStore.recordDailyLoad(slotPlayerId[i], (long)(sessionTs / 86400UL), sessionLoad);
+        rosterStore.recordDailyLoad(slotPlayerId[i], (long)(sessionTs / 86400UL), sessionLoad * loadMultiplier);
       }
     }
   }

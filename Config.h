@@ -244,6 +244,16 @@ static const long ACWR_MAX_LOOKBACK_DAYS = 42;  // 28g kronik pencere + isinma p
 static const char* const LOADS_FILE = "/loads.dat";  // her oyuncunun tarihli gunluk yuku (CSV: playerId,dayIndex,load)
 static const int MAX_LOAD_ENTRIES_PER_PLAYER = 50;   // ACWR_MAX_LOOKBACK_DAYS + pay - okurken RAM'de tutulan tavan
 
+// ---------------- Mac Gunu Yuk Agirligi ----------------
+// Spor biliminde mac gunu yuku, ayni suredeki bir antrenmandan daha agir
+// sayilir (rekabet stresi, karsi takim baskisi, mac-ici psikolojik yuk) -
+// bkz. Bourdon ve ark. 2017 (Config.h "Nabiz tabanli Ic Yuk" notuyla ayni
+// kaynak). Panelden "Antrenmani Sifirla" ile seans bitirilirken "Mac" olarak
+// isaretlenirse, o gunun ACWR'ye giren GUNLUK yukune bu carpan uygulanir.
+// Muhendislik tahmini (literaturde 1.2-2.0 araligi kullanilir) - sahada
+// gercek veriyle ayarlanmali.
+static const float MATCH_LOAD_MULTIPLIER = 1.5f;
+
 // ---------------- Gunluk Wellness Anketi (Hooper Index tarzi) ----------------
 // Kaynak: Hooper SL, Mackinnon LT ve ark. - basit 5 soruluk subjektif gunluk
 // hazirlik anketi, spor bilimi literaturunde yaygin kullanilir. HER SORU 1

@@ -831,6 +831,8 @@ function renderTeamDashboard(slots){
   const rows = slots.filter(s => s.enabled && s.playerId !== 0);
 
   rows.forEach(s => pushBpmHistory(s.slot, s.bpm, s.fresh));
+  checkSyncIntensity(slots);
+  renderHalftimeResults();
 
   if (rows.length === 0) {
     grid.innerHTML = '<div class="team-card" id="teamDashEmpty" style="grid-column:1/-1"><div class="tc-name" style="color:var(--muted)">Henuz oyuncu atanmadi</div></div>';
@@ -1028,6 +1030,63 @@ function renderFocusOverlay(){
     </div>`;
 }
 
+// ---------------- Takim Senkron Yogunluk Tespiti ----------------
+// Bizim sistemin tek-kisilik bir Polar saatinin gosteremeyecegi bir sey:
+// AYNI ANDA 3+ oyuncu yuksek bolgeye (Z4/Z5) girdiyse, bu muhtemelen mac/
+// antrenmanda kritik bir an (pres, gecis, yuksek tempolu faz) - GPS/event
+// etiketleme olmadan bile SENKRONIZE nabiz artisindan yakalanabilir.
+const SYNC_INTENSITY_MIN_ZONE = 4;
+const SYNC_INTENSITY_MIN_PLAYERS = 3;
+function checkSyncIntensity(slots){
+  const banner = document.getElementById('syncIntensityBanner');
+  const namesEl = document.getElementById('syncIntensityNames');
+  const highIntensity = slots.filter(s => s.enabled && s.playerId !== 0 && s.fresh && s.zone >= SYNC_INTENSITY_MIN_ZONE);
+  if (highIntensity.length >= SYNC_INTENSITY_MIN_PLAYERS) {
+    banner.style.display = 'block';
+    namesEl.textContent = highIntensity.map(s => s.playerName + ' (' + HR_ZONE_LABELS[s.zone] + ')').join(', ');
+  } else {
+    banner.style.display = 'none';
+  }
+}
+
+// ---------------- Devre Arasi Toparlanma Modu ----------------
+// Mevcut HRR testini (bkz. startHrrTestNow) TUM atanmis oyunculara AYNI ANDA
+// uygulayan bir kisayol - yarı zamanda tek tusla tum takimin toparlanmasini
+// olcup, mola sonunda karsilastirmali bir liste gorur.
+function startHalftimeRecoveryForAll(){
+  if (!lastSlotsGlobal) return;
+  const assigned = lastSlotsGlobal.filter(s => s.enabled && s.playerId !== 0);
+  if (assigned.length === 0) { alert('Once en az bir oyuncu atayin'); return; }
+  if (!confirm(assigned.length + ' oyuncu icin devre arasi toparlanma testi baslatilsin mi?')) return;
+
+  assigned.forEach(s => {
+    fetch('/starthrrtest?slot=' + s.slot, { method: 'POST', cache: 'no-store' }).catch(e=>{});
+  });
+  setTimeout(loadData, 300);
+}
+function renderHalftimeResults(){
+  const el = document.getElementById('halftimeResults');
+  if (!el || !lastSlotsGlobal) return;
+
+  const rows = lastSlotsGlobal.filter(s => s.enabled && s.playerId !== 0 && (s.hrrActive || s.hrr1 >= 0));
+  if (rows.length === 0) {
+    el.innerHTML = '<div style="font-size:12px;color:#8aa08f">Henuz test baslatilmadi</div>';
+    return;
+  }
+
+  // Iyi toparlanan (dususu buyuk olan) en ustte.
+  const sorted = [...rows].sort((a, b) => (b.hrr1 >= 0 ? b.hrr1 : -999) - (a.hrr1 >= 0 ? a.hrr1 : -999));
+  el.innerHTML = sorted.map(s => {
+    const status = s.hrrActive ? ('suruyor - ' + s.hrrElapsedSec + 'sn') : 'tamamlandi';
+    const hrr1Txt = s.hrr1 >= 0 ? (s.hrr1 + ' bpm') : '--';
+    const hrr2Txt = s.hrr2 >= 0 ? (s.hrr2 + ' bpm') : '--';
+    return `<div style="display:flex;justify-content:space-between;align-items:baseline;padding:6px 0;border-top:1px solid #1c2c21;font-size:12px">
+      <span style="font-weight:700">${s.playerName}</span>
+      <span style="color:#8aa08f;text-align:right">1dk: <b style="color:#f3f7f1">${hrr1Txt}</b> &middot; 2dk: <b style="color:#f3f7f1">${hrr2Txt}</b><br><span style="font-size:10px">${status}</span></span>
+    </div>`;
+  }).join('');
+}
+
 // Panel acilista bir kere okur - "Sunucuya Gonder" butonlarinin hedef URL'i,
 // cihaz adi ve anahtari. Cihazin kendisi internete cikmiyor (bkz. Config.h
 // GPS_UPLOAD_URL yorumu) - bu fetch() telefonun TARAYICISINDAN, WiFi (cihaza)
@@ -1164,12 +1223,17 @@ window.addEventListener('scroll', function(){
 }, { passive: true });
 
 function resetNow(){
+ // Mac Gunu vs Antrenman ayrimi (bkz. Config.h MATCH_LOAD_MULTIPLIER notu) -
+ // ACWR'nin gunluk yukunu etkiler, kisisel rekor/toplam yuku ETKILEMEZ.
+ let isMatch = confirm('Bu seans bir MAC miydi?\n\nTamam = Mac (ACWR yuku agirliklandirilir)\nIptal = Antrenman (normal)');
+ let sessionType = isMatch ? 'match' : 'training';
+
  let rpeInput = prompt('Antrenmanin zorluk algisi (RPE) 1-10 arasi girin (bos gecebilirsiniz):', '');
  let rpe = parseInt(rpeInput);
  if(isNaN(rpe) || rpe < 1 || rpe > 10) rpe = 0;
 
- if(confirm('Antrenman verileri sifirlansin mi?')){
-   fetch('/reset?ts=' + Math.floor(Date.now()/1000) + '&rpe=' + rpe, { cache: 'no-store' })
+ if(confirm((isMatch ? 'Mac' : 'Antrenman') + ' verileri sifirlansin mi?')){
+   fetch('/reset?ts=' + Math.floor(Date.now()/1000) + '&rpe=' + rpe + '&type=' + sessionType, { cache: 'no-store' })
   .then(() => {
     setTimeout(loadData, 300);
     setTimeout(loadHistory, 300);
@@ -1230,6 +1294,14 @@ function resetSeasonNow(){
       <option value="focus">Odak Modu (karta dokun)</option>
     </select>
   </div>
+
+  <!-- Takim Senkron Yogunluk banner'i - bkz. checkSyncIntensity(). Sadece 3+
+       oyuncu AYNI ANDA yuksek bolgedeyken gorunur. -->
+  <div id="syncIntensityBanner" style="display:none;background:linear-gradient(135deg,#ef4444,#fb923c);border-radius:16px;padding:12px 14px;margin-bottom:10px">
+    <div style="font-size:13px;font-weight:900;color:#020617">TAKIM SENKRON YOGUNLUK ANI</div>
+    <div id="syncIntensityNames" style="font-size:11px;font-weight:700;color:#020617cc;margin-top:2px"></div>
+  </div>
+
   <div class="team-grid" id="teamDashGrid">
     <div class="team-card" id="teamDashEmpty" style="grid-column:1/-1">
       <div class="tc-name" style="color:var(--muted)">Henuz oyuncu atanmadi</div>
@@ -1239,6 +1311,15 @@ function resetSeasonNow(){
   <!-- "Odak Modu" gorunumunde bir karta dokununca tam ekran acilir - bkz.
        openFocusMode()/closeFocusMode(). Diger gorunumlerde hep gizli kalir. -->
   <div id="focusOverlay" style="display:none;position:fixed;inset:0;z-index:200;background:var(--bg);overflow-y:auto;padding:20px"></div>
+
+  <div class="section-title">Devre Arasi Toparlanma</div>
+  <div class="card big">
+    <div class="label">Tum takimin Kalp Hizi Toparlanma testini ayni anda baslatir (bkz. HRR - her oyuncu kartinda da tek tek var)</div>
+    <button class="btn" style="margin-top:8px" onclick="startHalftimeRecoveryForAll()">Devre Arasi Testini Baslat (Tum Takim)</button>
+    <div id="halftimeResults" style="margin-top:10px">
+      <div style="font-size:12px;color:var(--muted)">Henuz test baslatilmadi</div>
+    </div>
+  </div>
 
   <!-- Bant/oyuncu kartlari sunucudan gelen slot sayisina (enabled=true olanlar)
        gore JS ile DINAMIK olusturulur (bkz. buildSlotDom) - Config.h'daki
