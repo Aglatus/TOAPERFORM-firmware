@@ -20,6 +20,11 @@ static void sendNoCacheHeaders() {
 // / ve /data
 // =====================================================
 static void handleRoot() {
+  // SAHA BULGUSU (2026-08): bu route hic no-cache basligi gondermiyordu -
+  // telefon tarayicisi ana sayfayi (tum CSS/JS'iyle) onbellekten gosterip
+  // firmware guncellemelerinin gorunmemesine yol aciyordu. Diger tum route'lar
+  // zaten sendNoCacheHeaders() cagiriyordu, burasi unutulmustu.
+  sendNoCacheHeaders();
   server.send_P(200, "text/html", INDEX_HTML);
 }
 
