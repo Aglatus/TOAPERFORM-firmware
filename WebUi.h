@@ -208,6 +208,47 @@ body{
   border-radius:999px;
   gap:0;
 }
+/* Detayli Tablo (E) - dar telefon ekraninda TUM metrik sutunlari sigmaz,
+   bu yuzden kendi yatay kaydirma kutusuna sarilir (bkz. .detail-table-wrap
+   grid-column:1/-1 - team-grid'in tum genisligini kaplar, digerleri gibi
+   3'lu sutuna bolunmez). */
+.detail-table-wrap{
+  grid-column:1/-1;
+  overflow-x:auto;
+  border:1px solid var(--line);
+  border-radius:14px;
+  background:linear-gradient(180deg,var(--card),var(--card2));
+}
+.detail-table{
+  border-collapse:collapse;
+  width:100%;
+  min-width:800px;
+  font-size:11px;
+}
+.detail-table th,.detail-table td{
+  padding:8px 10px;
+  text-align:center;
+  white-space:nowrap;
+  border-bottom:1px solid var(--line);
+}
+.detail-table th{
+  color:var(--muted);
+  font-weight:800;
+  text-transform:uppercase;
+  letter-spacing:.04em;
+  font-size:9px;
+}
+.detail-table td.dt-name{
+  text-align:left;
+  font-weight:700;
+  color:var(--text);
+  position:sticky;
+  left:0;
+  background:var(--card2);
+}
+.detail-table tr:last-child td{ border-bottom:none; }
+.detail-table tbody tr{ cursor:pointer; }
+.detail-table tbody tr:hover td{ background:rgba(255,255,255,.04); }
 .label{
   color:var(--muted);
   font-size:12px;
@@ -894,6 +935,7 @@ function renderTeamDashboard(slots){
   if (dashViewMode === 'monitor') grid.innerHTML = sorted.map(renderCardMonitor).join('');
   else if (dashViewMode === 'trend') grid.innerHTML = sorted.map(renderCardTrend).join('');
   else if (dashViewMode === 'focus') { grid.innerHTML = sorted.map(renderCardFocusEntry).join(''); updateFocusOverlayIfOpen(); }
+  else if (dashViewMode === 'table') grid.innerHTML = renderTeamDetailTable(sorted);
   else grid.innerHTML = sorted.map(renderCardRing).join('');
 }
 
@@ -996,6 +1038,49 @@ function renderCardFocusEntry(s){
       <span class="legend-chip" style="background:${s.riskColor};color:#020617;margin-top:6px;display:inline-block;padding:2px 8px;border-radius:999px">${s.riskStatus}</span>
     </div>`;
 }
+// E) DETAYLI TABLO - TUM oyuncular TUM metrikleriyle (nabiz/bolge/yorgunluk/
+// ACWR/monotonluk/TRIMP/HRV/HRR/Wellness) TEK tabloda yan yana - Polar Team
+// Pro'nun "Whole Team" gorunumune en yakin mod, koc tek tek karta girmeden
+// butun takimi karsilastirir. Dar telefon ekraninda yatay kaydirilir (bkz.
+// .detail-table-wrap), satira dokununca o oyuncunun Odak Modu'nu acar.
+function renderTeamDetailTable(sorted){
+  const rows = sorted.map(s => {
+    const bpmTxt = s.fresh ? s.bpm : '--';
+    const pctTxt = s.fresh && s.pctMax > 0 ? s.pctMax.toFixed(0) + '%' : '--';
+    const zoneIdx = s.fresh ? s.zone : 0;
+    const zoneTxt = s.fresh ? (HR_ZONE_LABELS[s.zone] || '--') : '--';
+    const acwrTxt = s.acwrDays >= 3 ? s.acwr.toFixed(2) : '--';
+    const monoTxt = s.acwrDays >= 3 ? s.monotony.toFixed(2) : '--';
+    const trimpTxt = s.baselineReady ? s.trimp.toFixed(1) : '--';
+    const hrvTxt = s.rrSupported ? (s.rmssd.toFixed(0) + '/' + s.sdnn.toFixed(0) + '/' + s.pnn50.toFixed(0) + '%') : '--';
+    const hrrTxt = (s.hrr1 >= 0 || s.hrr2 >= 0)
+      ? ((s.hrr1 >= 0 ? s.hrr1 + 'bpm' : '--') + ' / ' + (s.hrr2 >= 0 ? s.hrr2 + 'bpm' : '--'))
+      : '--';
+    const wellTxt = s.wellnessHasData ? (s.wellnessSum + '/50 (' + s.wellnessBand + ')') : '--';
+    return `<tr onclick="openFocusMode(${s.slot})">
+      <td class="dt-name">${s.playerName}</td>
+      <td><b>${bpmTxt}</b> <span style="color:var(--muted)">bpm</span></td>
+      <td>${pctTxt}</td>
+      <td><span class="zone-badge" style="margin-top:0;background:${HR_ZONE_COLORS[zoneIdx] || 'var(--muted)'}">${zoneTxt}</span></td>
+      <td><span class="legend-chip" style="display:inline-flex;background:${s.riskColor};color:#020617;padding:2px 8px;border-radius:999px;font-size:10px">${s.riskStatus} ${s.fatigue}</span></td>
+      <td>${acwrTxt} <span style="color:var(--muted)">(${s.acwrBand})</span></td>
+      <td>${monoTxt}</td>
+      <td>${trimpTxt}</td>
+      <td>${hrvTxt}</td>
+      <td>${hrrTxt}</td>
+      <td>${wellTxt}</td>
+    </tr>`;
+  }).join('');
+
+  return `<div class="detail-table-wrap"><table class="detail-table">
+    <thead><tr>
+      <th>Oyuncu</th><th>Nabiz</th><th>%HRmax</th><th>Bolge</th><th>Yorgunluk</th>
+      <th>ACWR</th><th>Monoton.</th><th>TRIMP</th><th>HRV (RMSSD/SDNN/pNN50)</th><th>HRR (1dk/2dk)</th><th>Wellness</th>
+    </tr></thead>
+    <tbody>${rows}</tbody>
+  </table></div>`;
+}
+
 function miniGauge(label, valueTxt, pct, color){
   const off = gaugeOffset(226, pct);
   return `
@@ -1332,6 +1417,7 @@ function resetSeasonNow(){
       <option value="monitor">Monitor (canli dalga)</option>
       <option value="trend">Trend + Bolge</option>
       <option value="focus">Odak Modu (karta dokun)</option>
+      <option value="table">Detayli Tablo (tum metrikler)</option>
     </select>
   </div>
 
