@@ -769,17 +769,72 @@ function submitWellnessNow(slot){
   .catch(e=>{});
 }
 
+// ---------------- Takim Panosu: 4 secilebilir gorunum ----------------
+// Kullanici karari (2026-08-18): tek bir tasarima karar vermek yerine 4
+// secenegin (Halka/Monitor/Trend/Odak Modu) hepsi CANLI veriyle sistemde
+// dursun, panelden istedigi an degistirebilsin. Secim SADECE o tarayicida
+// (localStorage) saklanir - cihaza/diger telefonlara yazilmaz, kisisel bir
+// goruntuleme tercihidir.
+let dashViewMode = localStorage.getItem('toaDashViewMode') || 'ring';
+let lastSlotsGlobal = null;
+let openFocusSlot = null;
+
+function onDashViewModeChange(){
+  dashViewMode = document.getElementById('dashViewMode').value;
+  localStorage.setItem('toaDashViewMode', dashViewMode);
+  if (dashViewMode !== 'focus') closeFocusMode();
+  if (lastSlotsGlobal) renderTeamDashboard(lastSlotsGlobal);
+}
+
+// Monitor/Trend gorunumleri "canli dalga/trend" gosterir ama SUNUCU gecmis
+// bpm tutmuyor (sadece anlik deger) - bu yuzden her loadData() turunda bir
+// ornek eklenerek TARAYICIDA (sayfa yenilenince sifirlanan, kucuk bir
+// tampon) tutulur. fresh=false ise (sinyal yok) bosluk birakilir.
+const bpmHistory = {};
+function pushBpmHistory(slot, bpm, fresh){
+  if (!bpmHistory[slot]) bpmHistory[slot] = [];
+  const h = bpmHistory[slot];
+  h.push(fresh ? bpm : null);
+  if (h.length > 60) h.shift();
+}
+function buildSparklinePoints(hist, width, height, minV, maxV){
+  const vals = hist.filter(v => v !== null && v !== undefined);
+  if (vals.length < 2) return '';
+  const n = hist.length;
+  const range = Math.max(1, maxV - minV);
+  let lastKnown = vals[0];
+  return hist.map((v, i) => {
+    const x = (i / (n - 1)) * width;
+    if (v !== null && v !== undefined) lastKnown = v;
+    const y = height - ((lastKnown - minV) / range) * height;
+    return x.toFixed(1) + ',' + y.toFixed(1);
+  }).join(' ');
+}
+// pct: 0-100. Daireyi (verilen cevre uzunlugunda) saat yonunde pct kadar
+// doldurmak icin gereken stroke-dashoffset'i hesaplar (12 hizasindan baslar,
+// bkz. SVG'deki rotate(-90) donusleri).
+function gaugeOffset(circumference, pct){
+  const p = Math.max(0, Math.min(100, pct));
+  return circumference * (1 - p / 100);
+}
+function zoneDistBar(zoneSec){
+  const total = zoneSec.reduce((a,b)=>a+b,0) || 1;
+  const colors = ['#60a5fa','#4ade80','#facc15','#fb923c','#ef4444'];
+  return zoneSec.map((v,i) => `<div style="width:${(v/total*100).toFixed(1)}%;background:${colors[i]}"></div>`).join('');
+}
+
 // Her enabled+atanmis slotu bir "oyuncu karti" olarak ozetleyen takim panosu -
-// koc tum oyunculari tek bakista gorur, tek tek kart acmasi gerekmez. Ayni
-// kart tasarim dilini (bkz. .card/.zone-badge/.legend-chip CSS) kullanir,
-// sadece kompakt bir ozet halinde - Polar Team Pro tarzi renkli/gorsel bir
-// takim ekrani hedeflenir.
+// koc tum oyunculari tek bakista gorur, tek tek kart acmasi gerekmez.
 function renderTeamDashboard(slots){
+  lastSlotsGlobal = slots;
   const grid = document.getElementById('teamDashGrid');
   const rows = slots.filter(s => s.enabled && s.playerId !== 0);
 
+  rows.forEach(s => pushBpmHistory(s.slot, s.bpm, s.fresh));
+
   if (rows.length === 0) {
     grid.innerHTML = '<div class="team-card" id="teamDashEmpty" style="grid-column:1/-1"><div class="tc-name" style="color:var(--muted)">Henuz oyuncu atanmadi</div></div>';
+    closeFocusMode();
     return;
   }
 
@@ -794,32 +849,183 @@ function renderTeamDashboard(slots){
     return b.fatigue - a.fatigue;
   });
 
-  // Polar Team Pro'nun "Whole Team" gorunumu referans alindi: her kartin
-  // ARKA PLANI (ince bir kenarlik degil) o oyuncunun ANLIK NABIZ BOLGESI
-  // rengiyle doluyor - isim + buyuk nabiz + %HRmax birincil bilgi. Bizim
-  // fazladan ACWR/wellness/yorgunluk verimiz kucuk ikincil rozetler olarak
-  // alta ekleniyor (Polar'in kompakt kartinda bunlar yok, bizim farkimiz).
-  grid.innerHTML = sorted.map(s => {
-    const bpmTxt = s.fresh ? s.bpm : '--';
-    const zoneIdx = s.fresh ? s.zone : 0;
-    const zoneLabel = HR_ZONE_LABELS[zoneIdx] || '--';
-    const zoneColor = HR_ZONE_COLORS[zoneIdx] || '#1e293b';
-    const pctTxt = s.fresh && s.pctMax > 0 ? s.pctMax.toFixed(0) + '%' : '--';
-    const acwrTxt = s.acwrDays >= 3 ? s.acwr.toFixed(2) : '--';
-    const wellnessTxt = s.wellnessHasData ? (s.wellnessSum + '/50') : '--';
+  if (dashViewMode === 'monitor') grid.innerHTML = sorted.map(renderCardMonitor).join('');
+  else if (dashViewMode === 'trend') grid.innerHTML = sorted.map(renderCardTrend).join('');
+  else if (dashViewMode === 'focus') { grid.innerHTML = sorted.map(renderCardFocusEntry).join(''); updateFocusOverlayIfOpen(); }
+  else grid.innerHTML = sorted.map(renderCardRing).join('');
+}
 
-    return `
-      <div class="team-card" style="background:${zoneColor}">
-        <div class="tc-name" style="color:#020617">${s.playerName}</div>
-        <div class="tc-bpm" style="color:#020617">${bpmTxt} <span class="unit" style="font-size:11px;color:#020617cc">bpm</span></div>
-        <div style="font-size:11px;font-weight:800;color:#020617cc;margin-top:1px">%HRmax: ${pctTxt} &middot; ${zoneLabel}</div>
-        <div class="tc-chips">
-          <span class="legend-chip" style="background:${s.riskColor};color:#020617">Yorgunluk ${s.fatigue}</span>
-          <span class="legend-chip" style="background:rgba(2,6,23,.18);color:#020617">A:${acwrTxt}</span>
-          <span class="legend-chip" style="background:rgba(2,6,23,.18);color:#020617">W:${wellnessTxt}</span>
+// A) HALKA (RING) - Apple Watch tarzi ic-ice halkalar: dis = anlik nabiz
+// bolgesi doluluk (%HRmax), ic = ACWR doluluk (2.0 ACWR'de tam dolu sayilir -
+// zaten 1.5 uzeri "yuksek risk" bandinda, 2.0 gorsel tavan olarak makul).
+function renderCardRing(s){
+  const bpmTxt = s.fresh ? s.bpm : '--';
+  const zoneIdx = s.fresh ? s.zone : 0;
+  const zoneColor = HR_ZONE_COLORS[zoneIdx] || '#8aa08f';
+  const outerOff = gaugeOffset(264, s.fresh ? s.pctMax : 0);
+  const acwrPct = s.acwrDays >= 3 ? (s.acwr / 2.0) * 100 : 0;
+  const innerOff = gaugeOffset(188, acwrPct);
+  return `
+    <div class="team-card" onclick="if(dashViewMode==='focus') openFocusMode(${s.slot})" style="text-align:center">
+      <svg viewBox="0 0 100 100" style="width:78px;height:78px">
+        <circle cx="50" cy="50" r="42" fill="none" stroke="#1c2c21" stroke-width="7"/>
+        <circle cx="50" cy="50" r="42" fill="none" stroke="${zoneColor}" stroke-width="7" stroke-linecap="round"
+          stroke-dasharray="264" stroke-dashoffset="${outerOff}" transform="rotate(-90 50 50)"/>
+        <circle cx="50" cy="50" r="30" fill="none" stroke="#1c2c21" stroke-width="6"/>
+        <circle cx="50" cy="50" r="30" fill="none" stroke="#facc15" stroke-width="6" stroke-linecap="round"
+          stroke-dasharray="188" stroke-dashoffset="${innerOff}" transform="rotate(-90 50 50)"/>
+        <text x="50" y="46" text-anchor="middle" font-size="18" font-weight="900" fill="#f3f7f1">${bpmTxt}</text>
+        <text x="50" y="60" text-anchor="middle" font-size="9" font-weight="700" fill="#8aa08f">bpm</text>
+      </svg>
+      <div class="tc-name" style="margin-top:4px">${s.playerName}</div>
+      <div style="font-size:9px;color:#8aa08f;margin-top:2px">Dis:bolge &middot; Ic:ACWR ${s.acwrDays>=3?s.acwr.toFixed(2):'--'}</div>
+    </div>`;
+}
+
+// B) MONITOR - koyu, izgarali "hasta basi cihazi" hissi. Cizgi GERCEK BPM
+// TRENDI'dir (uydurma EKG sekli DEGIL) - her kartin KENDI son ~40 saniyelik
+// min/max araligina gore olceklenir (o oyuncunun kendi degiskenligi
+// vurgulanir).
+function renderCardMonitor(s){
+  const hist = bpmHistory[s.slot] || [];
+  const vals = hist.filter(v => v !== null);
+  const minV = vals.length ? Math.min(...vals) - 5 : 60;
+  const maxV = vals.length ? Math.max(...vals) + 5 : 180;
+  const pts = buildSparklinePoints(hist, 200, 50, minV, maxV);
+  const bpmTxt = s.fresh ? s.bpm : '--';
+  const zoneIdx = s.fresh ? s.zone : 0;
+  const zoneColor = HR_ZONE_COLORS[zoneIdx] || '#8aa08f';
+  return `
+    <div class="team-card" onclick="if(dashViewMode==='focus') openFocusMode(${s.slot})">
+      <div class="tc-name">${s.playerName}</div>
+      <div class="tc-bpm" style="color:${zoneColor}">${bpmTxt} <span class="unit" style="font-size:10px;color:#8aa08f">bpm</span></div>
+      <svg viewBox="0 0 200 50" style="width:100%;height:44px;margin-top:4px;background:#020617;border-radius:8px;display:block">
+        <line x1="0" y1="12" x2="200" y2="12" stroke="#1c2c21" stroke-width="1"/>
+        <line x1="0" y1="25" x2="200" y2="25" stroke="#1c2c21" stroke-width="1"/>
+        <line x1="0" y1="38" x2="200" y2="38" stroke="#1c2c21" stroke-width="1"/>
+        ${pts ? `<polyline points="${pts}" fill="none" stroke="${zoneColor}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>` : ''}
+      </svg>
+      <div class="tc-chips">
+        <span class="legend-chip" style="background:${s.riskColor};color:#020617">Y:${s.fatigue}</span>
+        <span class="legend-chip">A:${s.acwrDays>=3?s.acwr.toFixed(2):'--'}</span>
+      </div>
+    </div>`;
+}
+
+// C) TREND + BOLGE - sparkline SABIT 60-200bpm eksende (kartlar arasi
+// karsilastirilabilir olsun diye, Monitor'un aksine), arka planda Z1-Z5
+// bant renkleri + alta o oturumun bolge dagilim cubugu.
+function renderCardTrend(s){
+  const hist = bpmHistory[s.slot] || [];
+  const pts = buildSparklinePoints(hist, 200, 40, 60, 200);
+  const bpmTxt = s.fresh ? s.bpm : '--';
+  const zoneIdx = s.fresh ? s.zone : 0;
+  const zoneLabel = HR_ZONE_LABELS[zoneIdx] || '--';
+  const pctTxt = s.fresh && s.pctMax > 0 ? s.pctMax.toFixed(0) + '%' : '--';
+  return `
+    <div class="team-card" onclick="if(dashViewMode==='focus') openFocusMode(${s.slot})">
+      <div class="tc-name">${s.playerName}</div>
+      <div style="display:flex;justify-content:space-between;align-items:baseline;margin-top:2px">
+        <div class="tc-bpm">${bpmTxt}<span class="unit" style="font-size:10px;color:#8aa08f"> bpm</span></div>
+        <span class="legend-chip" style="background:${s.riskColor};color:#020617">${zoneLabel} ${pctTxt}</span>
+      </div>
+      <svg viewBox="0 0 200 40" style="width:100%;height:36px;margin-top:4px;border-radius:8px;display:block">
+        <rect x="0" y="0" width="200" height="6.4" fill="#ef4444" opacity=".22"/>
+        <rect x="0" y="6.4" width="200" height="5.6" fill="#fb923c" opacity=".22"/>
+        <rect x="0" y="12" width="200" height="6.4" fill="#facc15" opacity=".22"/>
+        <rect x="0" y="18.4" width="200" height="7.2" fill="#4ade80" opacity=".22"/>
+        <rect x="0" y="25.6" width="200" height="6.4" fill="#60a5fa" opacity=".22"/>
+        ${pts ? `<polyline points="${pts}" fill="none" stroke="#f3f7f1" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>` : ''}
+      </svg>
+      <div style="display:flex;height:6px;border-radius:999px;overflow:hidden;margin-top:6px">${zoneDistBar(s.zoneSec)}</div>
+    </div>`;
+}
+
+// D) ODAK MODU - takim panosunda sade bir giris karti, tiklaninca tam ekran
+// tek-oyuncu detay (buyuk gauge + ikincil gauge'lar + HRV + bolge dagilimi)
+// acilir. Detay her loadData() turunda (bkz. updateFocusOverlayIfOpen)
+// canli guncellenir, kapatilana kadar acik kalir.
+function renderCardFocusEntry(s){
+  const bpmTxt = s.fresh ? s.bpm : '--';
+  return `
+    <div class="team-card" onclick="openFocusMode(${s.slot})" style="cursor:pointer;text-align:center">
+      <div class="tc-name">${s.playerName}</div>
+      <div class="tc-bpm">${bpmTxt}<span class="unit" style="font-size:10px;color:#8aa08f"> bpm</span></div>
+      <span class="legend-chip" style="background:${s.riskColor};color:#020617;margin-top:6px;display:inline-block;padding:2px 8px;border-radius:999px">${s.riskStatus}</span>
+    </div>`;
+}
+function miniGauge(label, valueTxt, pct, color){
+  const off = gaugeOffset(226, pct);
+  return `
+    <div style="text-align:center">
+      <svg viewBox="0 0 90 90" style="width:72px;height:72px">
+        <circle cx="45" cy="45" r="36" fill="none" stroke="#1c2c21" stroke-width="9"/>
+        <circle cx="45" cy="45" r="36" fill="none" stroke="${color}" stroke-width="9" stroke-linecap="round"
+          stroke-dasharray="226" stroke-dashoffset="${off}" transform="rotate(-90 45 45)"/>
+        <text x="45" y="50" text-anchor="middle" font-size="13" font-weight="900" fill="#f3f7f1">${valueTxt}</text>
+      </svg>
+      <div style="font-size:9px;color:#8aa08f;font-weight:800;margin-top:2px">${label}</div>
+    </div>`;
+}
+function openFocusMode(slot){
+  openFocusSlot = slot;
+  document.getElementById('focusOverlay').style.display = 'block';
+  renderFocusOverlay();
+}
+function closeFocusMode(){
+  openFocusSlot = null;
+  document.getElementById('focusOverlay').style.display = 'none';
+}
+function updateFocusOverlayIfOpen(){
+  if (openFocusSlot !== null) renderFocusOverlay();
+}
+function renderFocusOverlay(){
+  if (openFocusSlot === null || !lastSlotsGlobal) return;
+  const s = lastSlotsGlobal.find(x => x.slot === openFocusSlot);
+  const overlay = document.getElementById('focusOverlay');
+  if (!s || !s.enabled || s.playerId === 0) { closeFocusMode(); return; }
+
+  const bpmTxt = s.fresh ? s.bpm : '--';
+  const pctTxt = s.fresh && s.pctMax > 0 ? s.pctMax.toFixed(0) : 0;
+  const zoneIdx = s.fresh ? s.zone : 0;
+  const zoneLabel = HR_ZONE_LABELS[zoneIdx] || '--';
+  const outerOff = gaugeOffset(578, s.fresh ? s.pctMax : 0);
+  const acwrPct = s.acwrDays >= 3 ? (s.acwr / 2.0) * 100 : 0;
+  const wellPct = s.wellnessHasData ? Math.max(0, 100 - ((s.wellnessSum - 5) / 45 * 100)) : 0;
+  const hrrPct = s.hrr1 >= 0 ? (s.hrr1 / 40) * 100 : 0;
+  const hrvTxt = s.rrSupported ? (s.rmssd.toFixed(0) + 'ms &middot; ' + s.sdnn.toFixed(0) + 'ms &middot; %' + s.pnn50.toFixed(0)) : 'Desteklenmiyor';
+
+  overlay.innerHTML = `
+    <div style="max-width:420px;margin:0 auto;color:#f3f7f1">
+      <div style="display:flex;align-items:center;justify-content:space-between">
+        <div>
+          <div style="font-size:11px;font-weight:800;letter-spacing:.08em;color:#8aa08f;text-transform:uppercase">Odak Modu - ${s.bandLabel}</div>
+          <div style="font-size:22px;font-weight:900;margin-top:2px">${s.playerName}</div>
         </div>
-      </div>`;
-  }).join('');
+        <div onclick="closeFocusMode()" style="width:34px;height:34px;border-radius:50%;border:1px solid #1c2c21;display:flex;align-items:center;justify-content:center;color:#8aa08f;font-size:16px;cursor:pointer">&#10005;</div>
+      </div>
+      <div style="display:flex;justify-content:center;margin-top:14px">
+        <svg viewBox="0 0 220 220" style="width:200px;height:200px">
+          <circle cx="110" cy="110" r="92" fill="none" stroke="#1c2c21" stroke-width="16"/>
+          <circle cx="110" cy="110" r="92" fill="none" stroke="${s.riskColor}" stroke-width="16" stroke-linecap="round"
+            stroke-dasharray="578" stroke-dashoffset="${outerOff}" transform="rotate(-90 110 110)"/>
+          <text x="110" y="100" text-anchor="middle" font-size="42" font-weight="900" fill="#f3f7f1">${bpmTxt}</text>
+          <text x="110" y="126" text-anchor="middle" font-size="12" font-weight="700" fill="#8aa08f">bpm - %${pctTxt} HRmax</text>
+          <text x="110" y="150" text-anchor="middle" font-size="13" font-weight="900" fill="${s.riskColor}">${zoneLabel}</text>
+        </svg>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:4px">
+        ${miniGauge('ACWR', s.acwrDays>=3?s.acwr.toFixed(2):'--', acwrPct, '#facc15')}
+        ${miniGauge('WELLNESS', s.wellnessHasData?(s.wellnessSum+'/50'):'--', wellPct, '#4ade80')}
+        ${miniGauge('HRR 1dk', s.hrr1>=0?(s.hrr1+' bpm'):'--', hrrPct, '#60a5fa')}
+      </div>
+      <div style="margin-top:14px;background:linear-gradient(180deg,#0e1811,#0b120d);border:1px solid #1c2c21;border-radius:16px;padding:14px">
+        <div style="font-size:11px;color:#8aa08f;font-weight:700">HRV (RMSSD &middot; SDNN &middot; pNN50)</div>
+        <div style="font-size:15px;font-weight:900;margin-top:4px">${hrvTxt}</div>
+        <div style="display:flex;height:12px;border-radius:999px;overflow:hidden;margin-top:12px">${zoneDistBar(s.zoneSec)}</div>
+        <div style="font-size:10px;color:#8aa08f;margin-top:6px">Bu oturum bolge dagilimi</div>
+      </div>
+    </div>`;
 }
 
 // Panel acilista bir kere okur - "Sunucuya Gonder" butonlarinin hedef URL'i,
@@ -943,6 +1149,7 @@ setInterval(loadData,1000);
 setInterval(loadTeam,2000);
 setInterval(loadRoster,10000);
 window.onload=function(){
+ document.getElementById('dashViewMode').value = dashViewMode;
  loadGpsConfig();
  loadRoster();
  loadData();
@@ -1014,11 +1221,24 @@ function resetSeasonNow(){
   </div>
 
   <div class="section-title">Takim Risk Panosu</div>
+  <div class="card big">
+    <div class="label">Gorunum</div>
+    <select id="dashViewMode" onchange="onDashViewModeChange()" style="width:100%;padding:10px;margin-top:8px;border-radius:10px;border:1px solid var(--border);background:var(--card2);color:var(--text)">
+      <option value="ring">Halka (Ring)</option>
+      <option value="monitor">Monitor (canli dalga)</option>
+      <option value="trend">Trend + Bolge</option>
+      <option value="focus">Odak Modu (karta dokun)</option>
+    </select>
+  </div>
   <div class="team-grid" id="teamDashGrid">
     <div class="team-card" id="teamDashEmpty" style="grid-column:1/-1">
       <div class="tc-name" style="color:var(--muted)">Henuz oyuncu atanmadi</div>
     </div>
   </div>
+
+  <!-- "Odak Modu" gorunumunde bir karta dokununca tam ekran acilir - bkz.
+       openFocusMode()/closeFocusMode(). Diger gorunumlerde hep gizli kalir. -->
+  <div id="focusOverlay" style="display:none;position:fixed;inset:0;z-index:200;background:var(--bg);overflow-y:auto;padding:20px"></div>
 
   <!-- Bant/oyuncu kartlari sunucudan gelen slot sayisina (enabled=true olanlar)
        gore JS ile DINAMIK olusturulur (bkz. buildSlotDom) - Config.h'daki
