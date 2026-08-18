@@ -1,7 +1,7 @@
 #pragma once
 // =====================================================
 // TOAPERFORM - WebUi.h
-// Panel/rapor/OTA sayfalarinin HTML+CSS+JS govdesi. Buyuk sabitler PROGMEM'de
+// Panel/rapor sayfalarinin HTML+CSS+JS govdesi. Buyuk sabitler PROGMEM'de
 // tutulur (String'e kopyalanmadan dogrudan flash'tan gonderilir). Bu dosya
 // sadece SUNUM katmani - hicbir hesaplama mantigi icermez, veriyi /data,
 // /team, /history, /backup fetch()'leriyle WebRoutes'tan ceker.
@@ -1548,35 +1548,6 @@ fetch('/data').then(r=>r.json()).then(d=>{
     'Anlik yorgunluk skoru: ' + s0.fatigue + '/100 (' + s0.riskStatus + ').';
 }).catch(e=>{});
 </script>
-</body>
-</html>
-)rawliteral";
-
-static const char OTA_HTML[] PROGMEM = R"rawliteral(
-<!DOCTYPE html>
-<html>
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>TOAPERFORM OTA</title>
-<style>
-body{font-family:Arial;background:#020617;color:white;text-align:center;padding:25px}
-.card{max-width:420px;margin:auto;background:#0f172a;padding:22px;border-radius:18px}
-input,button{width:100%;padding:14px;margin-top:12px;border-radius:12px;border:0}
-button{background:#0284c7;color:white;font-weight:bold}
-a{color:#38bdf8}
-</style>
-</head>
-<body>
-<div class="card">
-<h2>TOAPERFORM OTA Update</h2>
-<p>.bin dosyasini secip yukleyin.</p>
-<form method="POST" action="/update" enctype="multipart/form-data">
-<input type="file" name="update">
-<button type="submit">Guncellemeyi Yukle</button>
-</form>
-<p><a href="/">Panele Don</a></p>
-</div>
 </body>
 </html>
 )rawliteral";

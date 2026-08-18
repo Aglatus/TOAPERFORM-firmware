@@ -1,7 +1,7 @@
 #pragma once
 // =====================================================
 // TOAPERFORM - Config.h
-// Donanim pinleri, agi/OTA kimlik bilgileri ve tum sabit esik degerleri.
+// Donanim pinleri, ag kimlik bilgileri ve tum sabit esik degerleri.
 // Bu dosya sadece sabitler icerir, mantik icermez - mantigi degistirmeden
 // bir esigi ayarlamak icin tek bakilacak yer burasi olsun diye.
 //
@@ -42,12 +42,6 @@ static const bool DEVICE_IS_HUB = true;
 static const unsigned long PEER_BROADCAST_MS = 2000;
 static const unsigned long PEER_TIMEOUT_MS = 15000;
 static const int MAX_PEERS = 8;
-
-// ---------------- OTA Update Auth ----------------
-// Firmware yukleme WiFi agina baglanan herkese acik OLMAMALI.
-// Ayri bir kullanici/sifre ile korunuyor.
-static const char* const OTA_USER = "admin";
-static const char* const OTA_PASSWORD = "TOAPERFORM_OTA_2026";
 
 // ---------------- Sunucuya Gonderim (toaperform.com) ----------------
 // Cihazin kendisi internete cikmiyor (saha wifi'si yok/guvenilmez) - panel

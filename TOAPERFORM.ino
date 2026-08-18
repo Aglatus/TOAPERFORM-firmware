@@ -16,7 +16,7 @@
 //   SeasonStore.h/.cpp      - LittleFS (sezon pasaportu + antrenman gecmisi)
 //   HeartRateHardware.h/.cpp - BLE (NimBLE) Heart Rate Service istemcisi
 //   TeamNetwork.h/.cpp      - ESP-NOW takim (nabiz/yorgunluk) yayini
-//   WebUi.h                - panel/rapor/OTA HTML govdesi
+//   WebUi.h                - panel/rapor HTML govdesi
 //   WebRoutes.h/.cpp        - HTTP handler'lari (glue katmani)
 //   Globals.h/.cpp          - alt sistem ornekleri + paylasilan oturum durumu
 //

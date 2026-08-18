@@ -2,13 +2,10 @@
 #include "Globals.h"
 #include "WebUi.h"
 #include "PlayerMath.h"
-#include <Update.h>
 #include <LittleFS.h>
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
-
-static bool otaAuthorized = false;
 
 static void sendNoCacheHeaders() {
   server.sendHeader("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0");
@@ -462,66 +459,6 @@ static void handleReport() {
 }
 
 // =====================================================
-// OTA
-// =====================================================
-static void handleUpdatePage() {
-  if (!server.authenticate(OTA_USER, OTA_PASSWORD)) {
-    return server.requestAuthentication();
-  }
-  server.send_P(200, "text/html", OTA_HTML);
-}
-
-static void handleUpdateUpload() {
-  HTTPUpload& upload = server.upload();
-
-  if (upload.status == UPLOAD_FILE_START) {
-    otaAuthorized = server.authenticate(OTA_USER, OTA_PASSWORD);
-
-    if (!otaAuthorized) {
-      Serial.println("OTA reddedildi: yetkisiz erisim");
-      return;
-    }
-
-    Serial.println("OTA basladi");
-
-    if (!Update.begin(UPDATE_SIZE_UNKNOWN)) {
-      Update.printError(Serial);
-    }
-  } else if (upload.status == UPLOAD_FILE_WRITE) {
-    if (!otaAuthorized) return;
-
-    if (Update.write(upload.buf, upload.currentSize) != upload.currentSize) {
-      Update.printError(Serial);
-    }
-  } else if (upload.status == UPLOAD_FILE_END) {
-    if (!otaAuthorized) return;
-
-    if (Update.end(true)) {
-      Serial.println("OTA tamamlandi");
-    } else {
-      Update.printError(Serial);
-    }
-  }
-}
-
-static void handleUpdateComplete() {
-  if (!server.authenticate(OTA_USER, OTA_PASSWORD)) {
-    return server.requestAuthentication();
-  }
-
-  server.sendHeader("Connection", "close");
-  server.send(200, "text/plain",
-    (otaAuthorized && !Update.hasError()) ? "Guncelleme basarili. Cihaz yeniden baslatiliyor..." : "Guncelleme basarisiz!");
-  delay(1000);
-
-  if (otaAuthorized && !Update.hasError()) {
-    ESP.restart();
-  }
-
-  otaAuthorized = false;
-}
-
-// =====================================================
 // Kayit
 // =====================================================
 void registerWebRoutes() {
@@ -540,8 +477,6 @@ void registerWebRoutes() {
   server.on("/deletehistory", handleDeleteHistory);
   server.on("/backup", handleBackup);
   server.on("/report", handleReport);
-  server.on("/update", HTTP_GET, handleUpdatePage);
-  server.on("/update", HTTP_POST, handleUpdateComplete, handleUpdateUpload);
 
   // Captive portal paths
   server.on("/generate_204", handleCaptive);
