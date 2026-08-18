@@ -152,6 +152,56 @@ body{
 .card.big{
   grid-column:span 2;
 }
+/* Takim Risk Panosu - HR_SLOTS'a kadar (9) oyuncu kartinin tek ekranda
+   makul sekilde sigmasi icin, genel .card/.grid'den daha kompakt bir varyant.
+   auto-fill: genis ekranda (tablet vb.) daha fazla sutun, dar telefonda 2'ye
+   duser - .grid'in sabit "1fr 1fr"unden farkli olarak ekran genisligine gore
+   kendini ayarlar. */
+.team-grid{
+  display:grid;
+  grid-template-columns:repeat(auto-fill, minmax(130px, 1fr));
+  gap:8px;
+}
+.team-card{
+  background:linear-gradient(180deg,var(--card),var(--card2));
+  border:1px solid var(--line);
+  border-radius:14px;
+  padding:10px;
+  box-shadow:0 4px 12px rgba(0,0,0,.25);
+  min-width:0;  /* uzun isimlerin grid hucresini genisletmesini onler */
+}
+.team-card .tc-name{
+  color:var(--muted);
+  font-size:11px;
+  font-weight:700;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+.team-card .tc-bpm{
+  font-family:"TP Display",-apple-system,"Segoe UI",Roboto,Arial,sans-serif;
+  font-size:22px;
+  font-weight:900;
+  font-variant-numeric:tabular-nums;
+  margin-top:2px;
+}
+.team-card .tc-chips{
+  display:flex;
+  gap:4px;
+  flex-wrap:wrap;
+  margin-top:6px;
+}
+.team-card .tc-chips .zone-badge{
+  margin-top:0;
+  padding:2px 7px;
+  font-size:10px;
+}
+.team-card .tc-chips .legend-chip{
+  font-size:10px;
+  padding:2px 6px;
+  border-radius:999px;
+  gap:0;
+}
 .label{
   color:var(--muted);
   font-size:12px;
@@ -723,7 +773,7 @@ function renderTeamDashboard(slots){
   const rows = slots.filter(s => s.enabled && s.playerId !== 0);
 
   if (rows.length === 0) {
-    grid.innerHTML = '<div class="card big" id="teamDashEmpty"><div class="value mini" style="color:var(--muted)">Henuz oyuncu atanmadi</div></div>';
+    grid.innerHTML = '<div class="team-card" id="teamDashEmpty" style="grid-column:1/-1"><div class="tc-name" style="color:var(--muted)">Henuz oyuncu atanmadi</div></div>';
     return;
   }
 
@@ -746,16 +796,14 @@ function renderTeamDashboard(slots){
     const wellnessTxt = s.wellnessHasData ? (s.wellnessSum + '/50') : '--';
 
     return `
-      <div class="card" style="border-left:4px solid ${s.riskColor}">
-        <div class="label">${s.playerName}</div>
-        <div class="value" style="color:${s.riskColor}">${bpmTxt} <span class="unit">bpm</span></div>
-        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">
-          <span class="zone-badge" style="background:${zoneColor}">${zoneLabel}</span>
-          <span class="legend-chip" style="background:${s.riskColor};color:#020617">${s.riskStatus} ${s.fatigue}/100</span>
-        </div>
-        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">
-          <span class="legend-chip">ACWR: ${acwrTxt}</span>
-          <span class="legend-chip">Wellness: ${wellnessTxt}</span>
+      <div class="team-card" style="border-left:3px solid ${s.riskColor}">
+        <div class="tc-name">${s.playerName}</div>
+        <div class="tc-bpm" style="color:${s.riskColor}">${bpmTxt} <span class="unit" style="font-size:11px">bpm</span></div>
+        <div class="tc-chips">
+          <span class="zone-badge">${zoneLabel}</span>
+          <span class="legend-chip" style="background:${s.riskColor};color:#020617">${s.fatigue}</span>
+          <span class="legend-chip">A:${acwrTxt}</span>
+          <span class="legend-chip">W:${wellnessTxt}</span>
         </div>
       </div>`;
   }).join('');
@@ -953,9 +1001,9 @@ function resetSeasonNow(){
   </div>
 
   <div class="section-title">Takim Risk Panosu</div>
-  <div class="grid" id="teamDashGrid">
-    <div class="card big" id="teamDashEmpty">
-      <div class="value mini" style="color:var(--muted)">Henuz oyuncu atanmadi</div>
+  <div class="team-grid" id="teamDashGrid">
+    <div class="team-card" id="teamDashEmpty" style="grid-column:1/-1">
+      <div class="tc-name" style="color:var(--muted)">Henuz oyuncu atanmadi</div>
     </div>
   </div>
 
