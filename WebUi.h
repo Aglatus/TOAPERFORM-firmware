@@ -794,22 +794,29 @@ function renderTeamDashboard(slots){
     return b.fatigue - a.fatigue;
   });
 
+  // Polar Team Pro'nun "Whole Team" gorunumu referans alindi: her kartin
+  // ARKA PLANI (ince bir kenarlik degil) o oyuncunun ANLIK NABIZ BOLGESI
+  // rengiyle doluyor - isim + buyuk nabiz + %HRmax birincil bilgi. Bizim
+  // fazladan ACWR/wellness/yorgunluk verimiz kucuk ikincil rozetler olarak
+  // alta ekleniyor (Polar'in kompakt kartinda bunlar yok, bizim farkimiz).
   grid.innerHTML = sorted.map(s => {
     const bpmTxt = s.fresh ? s.bpm : '--';
-    const zoneLabel = HR_ZONE_LABELS[s.fresh ? s.zone : 0] || '--';
-    const zoneColor = HR_ZONE_COLORS[s.fresh ? s.zone : 0] || 'var(--muted)';
+    const zoneIdx = s.fresh ? s.zone : 0;
+    const zoneLabel = HR_ZONE_LABELS[zoneIdx] || '--';
+    const zoneColor = HR_ZONE_COLORS[zoneIdx] || '#1e293b';
+    const pctTxt = s.fresh && s.pctMax > 0 ? s.pctMax.toFixed(0) + '%' : '--';
     const acwrTxt = s.acwrDays >= 3 ? s.acwr.toFixed(2) : '--';
     const wellnessTxt = s.wellnessHasData ? (s.wellnessSum + '/50') : '--';
 
     return `
-      <div class="team-card" style="border-left:3px solid ${s.riskColor}">
-        <div class="tc-name">${s.playerName}</div>
-        <div class="tc-bpm" style="color:${s.riskColor}">${bpmTxt} <span class="unit" style="font-size:11px">bpm</span></div>
+      <div class="team-card" style="background:${zoneColor}">
+        <div class="tc-name" style="color:#020617">${s.playerName}</div>
+        <div class="tc-bpm" style="color:#020617">${bpmTxt} <span class="unit" style="font-size:11px;color:#020617cc">bpm</span></div>
+        <div style="font-size:11px;font-weight:800;color:#020617cc;margin-top:1px">%HRmax: ${pctTxt} &middot; ${zoneLabel}</div>
         <div class="tc-chips">
-          <span class="zone-badge">${zoneLabel}</span>
-          <span class="legend-chip" style="background:${s.riskColor};color:#020617">${s.fatigue}</span>
-          <span class="legend-chip">A:${acwrTxt}</span>
-          <span class="legend-chip">W:${wellnessTxt}</span>
+          <span class="legend-chip" style="background:${s.riskColor};color:#020617">Yorgunluk ${s.fatigue}</span>
+          <span class="legend-chip" style="background:rgba(2,6,23,.18);color:#020617">A:${acwrTxt}</span>
+          <span class="legend-chip" style="background:rgba(2,6,23,.18);color:#020617">W:${wellnessTxt}</span>
         </div>
       </div>`;
   }).join('');
