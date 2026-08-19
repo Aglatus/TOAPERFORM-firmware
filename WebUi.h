@@ -221,6 +221,26 @@ body{
   border-radius:999px;
   gap:0;
 }
+/* Isi Kartlari (F) - Polar Team Pro "Whole Team" ekranina benzer duz-renk
+   kutu gorunumu (bkz. renderCardHeat). Zon rengi ARKA PLAN olarak dolduruldugu
+   icin metin hep koyu (#020617) - HR_ZONE_COLORS'daki tum renkler (mavi/yesil/
+   sari/turuncu/kirmizi) yeterince acik oldugundan koyu metin her zonda okunur. */
+.heat-card{
+  text-align:center;
+  color:#020617;
+  border:none;
+}
+.heat-card .hc-name{
+  font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:.02em;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+}
+.heat-card .hc-pct{
+  font-family:"TP Display",-apple-system,"Segoe UI",Roboto,Arial,sans-serif;
+  font-size:28px; font-weight:900; margin-top:2px; line-height:1;
+}
+.heat-card .hc-unit{ font-size:13px; font-weight:800; margin-left:1px; }
+.heat-card .hc-sub{ font-size:10px; font-weight:700; opacity:.75; margin-top:3px; }
+
 /* Detayli Tablo (E) - dar telefon ekraninda TUM metrik sutunlari sigmaz,
    bu yuzden kendi yatay kaydirma kutusuna sarilir (bkz. .detail-table-wrap
    grid-column:1/-1 - team-grid'in tum genisligini kaplar, digerleri gibi
@@ -909,6 +929,7 @@ function renderTeamDashboard(slots){
   else if (dashViewMode === 'trend') grid.innerHTML = sorted.map(renderCardTrend).join('');
   else if (dashViewMode === 'focus') { grid.innerHTML = sorted.map(renderCardFocusEntry).join(''); updateFocusOverlayIfOpen(); }
   else if (dashViewMode === 'table') grid.innerHTML = renderTeamDetailTable(sorted);
+  else if (dashViewMode === 'heat') grid.innerHTML = sorted.map(renderCardHeat).join('');
   else grid.innerHTML = sorted.map(renderCardRing).join('');
 }
 
@@ -1050,6 +1071,27 @@ function renderTeamDetailTable(sorted){
     </tr></thead>
     <tbody>${rows}</tbody>
   </table></div>`;
+}
+
+// F) ISI KARTLARI (Polar Team Pro "Whole Team" ekranina benzer) - her oyuncu
+// duz renkli, buyuk %HRmax rakamli bir kutu; renk kutunun ARKA PLANI olarak
+// dolduruluyor (Ring/Monitor'daki gibi ince bir gosterge cizgisi degil).
+// Amac: en HIZLI tarabilir gorunum - koc uzaktan bakinca hangi kutularin
+// "sicak" (kirmizi/turuncu) oldugunu aninda gorsun. Renk skalasi Polar'in
+// kendi (bilinmeyen) algoritmasi DEGIL, sistemin zaten her yerde kullandigi
+// ayni HR_ZONE_COLORS/bolge esikleri - boylece bu gorunum diger 5 modla
+// TUTARLI kalir, sadece sunumu farkli.
+function renderCardHeat(s){
+  const zoneIdx = s.fresh ? s.zone : 0;
+  const zoneColor = HR_ZONE_COLORS[zoneIdx] || 'var(--card2)';
+  const pctTxt = s.fresh && s.pctMax > 0 ? s.pctMax.toFixed(0) : '--';
+  const bpmTxt = s.fresh ? s.bpm : '--';
+  return `
+    <div class="team-card heat-card" style="background:${zoneColor}" onclick="if(dashViewMode==='focus') openFocusMode(${s.slot})">
+      <div class="hc-name">${s.playerName}</div>
+      <div class="hc-pct">${pctTxt}<span class="hc-unit">%</span></div>
+      <div class="hc-sub">${bpmTxt} bpm &middot; ${s.riskStatus}</div>
+    </div>`;
 }
 
 function miniGauge(label, valueTxt, pct, color){
@@ -1389,6 +1431,7 @@ function resetSeasonNow(){
       <option value="trend">Trend + Bolge</option>
       <option value="focus">Odak Modu (karta dokun)</option>
       <option value="table">Detayli Tablo (tum metrikler)</option>
+      <option value="heat">Isi Kartlari (Polar tarzi)</option>
     </select>
   </div>
 

@@ -1,7 +1,6 @@
 #include "HeartRateHardware.h"
 #include "Config.h"
 #include <NimBLEDevice.h>
-#include <esp_coexist.h>
 #include <string.h>
 
 // Standart Bluetooth SIG Heart Rate Service / Characteristic UUID'leri.
@@ -287,18 +286,14 @@ void HeartRateHardware::begin() {
 
   NimBLEDevice::init("");
 
-  // WiFi+BLE RADYO PAYLASIMI (SAHADA HENUZ DOGRULANMADI - muhendislik
-  // hipotezi, bkz. asagidaki scan interval/window notu ile AYNI kok sorun):
-  // ESP-IDF'in coexistence hakemi varsayilan olarak hangi tarafa oncelik
-  // verecegini kendi belirler - saha bulgusu (WiFi AP'ye assoc olunuyor ama
-  // DHCP hic tamamlanmiyordu) BLE'nin WiFi'yi acliktan biraktigini
-  // gosteriyordu. BALANCE tercihini ACIKCA istemek, scan window'unu
-  // kucultmenin (asagida) yaninda WiFi'ye radyo zamaninda GARANTILI bir pay
-  // birakmayi hedefliyor - implicit/dokumante olmayan varsayilana guvenmek
-  // yerine.
-  esp_err_t coexResult = esp_coex_preference_set(ESP_COEX_PREFER_BALANCE);
-  Serial.print("[BLE] WiFi/BLE coexistence tercihi (BALANCE) ayarlandi, sonuc=");
-  Serial.println(coexResult == ESP_OK ? "OK" : "HATA");
+  // SAHA BULGUSU (2026-08): esp_coex_preference_set(BALANCE) burada denendi
+  // ama WiFi AP'nin GORUNMEZ hale gelmesine yol acti (SSID taramada hic
+  // cikmiyordu) - muhtemelen bu core/IDF surumunde implicit varsayilan zaten
+  // WiFi'yi onceliklendiriyordu, ACIKCA "dengeli" istemek BLE'nin surekli
+  // taramasina daha fazla radyo zamani verip WiFi beacon yayinini zayiflatti.
+  // Geri alindi - coexistence tercihi implicit varsayilaninda birakiliyor,
+  // ayarlama SADECE asagidaki scan interval/window (WiFi'ye zaman birakan
+  // dusuk duty-cycle) uzerinden yapiliyor.
 
   NimBLEScan* scan = NimBLEDevice::getScan();
   scan->setScanCallbacks(&s_scanCallbacks, false);
