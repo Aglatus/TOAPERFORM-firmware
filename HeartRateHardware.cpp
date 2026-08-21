@@ -185,6 +185,15 @@ class HrScanCallbacks : public NimBLEScanCallbacks {
     if (s_shouldConnect) return;  // bir baglanma denemesi zaten beklemede
     if (!device->isAdvertisingService(HR_SERVICE_UUID)) return;
 
+    // GECICI DEBUG (band eklerken MAC ogrenmek icin) - eslesmeyen cihazlari da
+    // yazdirir, boylece yeni/henuz Config.h'de tanimli olmayan bir bant da
+    // gorulebilir. MAC alindiktan sonra bu blok kaldirilmali.
+    Serial.print("[BLE][DEBUG] Herhangi bir nabiz cihazi goruldu: ");
+    Serial.print(device->getAddress().toString().c_str());
+    Serial.print(" \"");
+    Serial.print(device->haveName() ? device->getName().c_str() : "?");
+    Serial.println("\"");
+
     int slot = matchSlotForDevice(device);
     if (slot < 0) return;
 

@@ -194,7 +194,8 @@ static const int HR_DEVICE_SLOTS = 9;  // HeartRateHardware::SLOT_COUNT ile AYNI
 static const char* const HR_DEVICE_MAC[HR_DEVICE_SLOTS] = {
   "24:ac:ac:07:45:27",  // slot 0 - Polar Sense 0745273E
   "24:ac:ac:0c:9d:9c",  // slot 1 - Polar Sense 0C9D9C34
-  "", "", "", "", "", "", ""  // slot 2..8 - TODO: yeni bant eklendikce MAC yazin
+  "ed:e6:58:d9:79:c7",  // slot 2 - HRM Belt 5089
+  "", "", "", "", ""  // slot 3..8 - TODO: yeni bant eklendikce MAC yazin
 };
 static const char* const HR_DEVICE_LABEL[HR_DEVICE_SLOTS] = {
   "Bant1", "Bant2", "Bant3", "Bant4", "Bant5", "Bant6", "Bant7", "Bant8", "Bant9"
