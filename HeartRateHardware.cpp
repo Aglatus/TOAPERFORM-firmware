@@ -1,7 +1,10 @@
 #include "HeartRateHardware.h"
 #include "Config.h"
+#include "SeasonStore.h"  // readLineToBuffer() - kucuk, genel amacli, tekrar yazmaya degmez
 #include <NimBLEDevice.h>
+#include <LittleFS.h>
 #include <string.h>
+#include <stdio.h>
 
 // Standart Bluetooth SIG Heart Rate Service / Characteristic UUID'leri.
 static const NimBLEUUID HR_SERVICE_UUID((uint16_t)0x180D);
@@ -19,7 +22,10 @@ struct HrSlot {
   // diye. NimBLEAddress::operator== hem deger hem TIP alanini karsilastirir -
   // saatin gercek adres tipini Config.h'a ayrica yazdirmaya gerek birakmamak
   // icin bilerek NimBLEAddress kullanilmadi.
-  const char* configuredMac = "";
+  // char[] (Config.h'daki const char* literaline POINTER degil) CUNKU
+  // panelden "Yeni Bant Ekle" ile runtime'da (LittleFS'ten okunarak veya
+  // ogrenilerek) YAZILABILIR olmasi gerekiyor - bkz. loadMacOverrides().
+  char configuredMac[18] = "";
   NimBLEClient* client = nullptr;
 
   volatile bool connected = false;
@@ -66,6 +72,51 @@ static int s_pendingSlot = -1;
 // eslesen cihaz bulunca (baglanmak icin) veya baglanti koparinca durur/yeniden
 // baslar - periyodik "yeniden dene" dongusu YOK.
 static bool s_needRescan = false;
+
+// ---------------- Panelden "Yeni Bant Ekle" (2026-08 ekleme) ----------------
+// bkz. Config.h HR_MAC_OVERRIDE_FILE/HR_PAIRING_TIMEOUT_MS notu ve
+// HeartRateHardware.h HrPairingState. s_pairingSlot >= 0 iken tarama, TUM
+// etkin slotlar zaten bagli olsa BILE (bkz. startContinuousScan()) devam
+// eder - aksi halde 3 bandin ucu de bagliyken 4.'yu ogrenmeye calismak
+// taramayi HIC baslatmazdi.
+static int s_pairingSlot = -1;
+static unsigned long s_pairingDeadlineMs = 0;
+// UI'nin /pairstatus ile sonucu (basari/zaman asimi) sorgulayabilmesi icin
+// - s_pairingSlot sifirlandiktan SONRA da (bir sonraki startPairing/cancel'a
+// kadar) gecerliligini korur.
+static int s_lastPairingSlot = -1;
+static HrPairingState s_lastPairingState = HrPairingState::Idle;
+
+// HR_MAC_OVERRIDE_FILE satir bicimi: slot,mac - SADECE panelden ogrenilmis
+// (Config.h varsayilanini gecersiz kilan) slotlar icin bir satir yazilir.
+static void loadMacOverrides() {
+  File f = LittleFS.open(HR_MAC_OVERRIDE_FILE, "r");
+  if (!f) return;
+
+  char lineBuf[40];
+  while (readLineToBuffer(f, lineBuf, sizeof(lineBuf))) {
+    int slot;
+    char mac[18];
+    if (sscanf(lineBuf, "%d,%17[^,\n]", &slot, mac) != 2) continue;
+    if (slot < 0 || slot >= HeartRateHardware::SLOT_COUNT) continue;
+    strncpy(s_slots[slot].configuredMac, mac, sizeof(s_slots[slot].configuredMac) - 1);
+    s_slots[slot].configuredMac[sizeof(s_slots[slot].configuredMac) - 1] = '\0';
+  }
+  f.close();
+}
+
+static void saveMacOverrides() {
+  File f = LittleFS.open(HR_MAC_OVERRIDE_FILE, "w");
+  if (!f) return;
+
+  char buf[24];
+  for (int i = 0; i < HeartRateHardware::SLOT_COUNT; i++) {
+    if (s_slots[i].configuredMac[0] == '\0') continue;
+    snprintf(buf, sizeof(buf), "%d,%s", i, s_slots[i].configuredMac);
+    f.println(buf);
+  }
+  f.close();
+}
 
 // ---------------- Nabiz olcumu ayristirma (BLE HR profili, GATT spec) ----------------
 // Flags byte (data[0]): bit0 = deger formati (0=uint8, 1=uint16), bit1 = sensor
@@ -185,14 +236,49 @@ class HrScanCallbacks : public NimBLEScanCallbacks {
     if (s_shouldConnect) return;  // bir baglanma denemesi zaten beklemede
     if (!device->isAdvertisingService(HR_SERVICE_UUID)) return;
 
-    // GECICI DEBUG (band eklerken MAC ogrenmek icin) - eslesmeyen cihazlari da
-    // yazdirir, boylece yeni/henuz Config.h'de tanimli olmayan bir bant da
-    // gorulebilir. MAC alindiktan sonra bu blok kaldirilmali.
-    Serial.print("[BLE][DEBUG] Herhangi bir nabiz cihazi goruldu: ");
-    Serial.print(device->getAddress().toString().c_str());
-    Serial.print(" \"");
-    Serial.print(device->haveName() ? device->getName().c_str() : "?");
-    Serial.println("\"");
+    // PANELDEN "Yeni Bant Ekle" (bkz. HeartRateHardware.h/Config.h notu):
+    // ogrenme bekleyen bir slot varsa, HENUZ HICBIR SLOTA KAYITLI OLMAYAN
+    // ilk cihaz o slota atanir (baska bir oyuncunun zaten bagli bandini
+    // yanlislikla "yeni bant" saymamak icin known-MAC kontrolu yapilir).
+    if (s_pairingSlot >= 0) {
+      // std::string'i AYRI bir degiskende tutuyoruz - gecici bir std::string'in
+      // .c_str()'ini dogrudan pointer'a atamak, tam ifade bitince (temporary
+      // yikilinca) sarkan bir pointer'a yol acardi.
+      std::string seenMacStr = device->getAddress().toString();
+      const char* seenMac = seenMacStr.c_str();
+      bool alreadyKnown = false;
+      for (int i = 0; i < HeartRateHardware::SLOT_COUNT; i++) {
+        if (s_slots[i].configuredMac[0] != '\0' && strcasecmp(seenMac, s_slots[i].configuredMac) == 0) {
+          alreadyKnown = true;
+          break;
+        }
+      }
+      if (!alreadyKnown) {
+        int slot = s_pairingSlot;
+        strncpy(s_slots[slot].configuredMac, seenMac, sizeof(s_slots[slot].configuredMac) - 1);
+        s_slots[slot].configuredMac[sizeof(s_slots[slot].configuredMac) - 1] = '\0';
+        s_slots[slot].enabled = true;
+        s_legacyMode = false;  // en az bir MAC artik KESIN atanmis - eski (MAC'siz) davranisa bir daha donulmemeli
+        saveMacOverrides();
+
+        Serial.print("[BLE] Yeni bant ogrenildi (");
+        Serial.print(s_slots[slot].label);
+        Serial.print("): ");
+        Serial.print(seenMac);
+        Serial.print(" \"");
+        Serial.print(device->haveName() ? device->getName().c_str() : "?");
+        Serial.println("\"");
+
+        s_pairingSlot = -1;
+        s_lastPairingState = HrPairingState::Success;
+
+        NimBLEDevice::getScan()->stop();
+        s_pendingDevice = new NimBLEAdvertisedDevice(*device);
+        s_pendingSlot = slot;
+        s_shouldConnect = true;
+        return;
+      }
+    }
 
     int slot = matchSlotForDevice(device);
     if (slot < 0) return;
@@ -266,7 +352,10 @@ static bool connectToDevice(int slot, NimBLEAdvertisedDevice* device) {
 }
 
 static void startContinuousScan() {
-  if (allEnabledSlotsConnected()) return;  // aranacak bir sey kalmadi
+  // s_pairingSlot >= 0 iken TUM etkin slotlar zaten bagli olsa BILE tarama
+  // durdurulmaz - aksi halde "Yeni Bant Ekle" ile 4. bir bandi ogrenmeye
+  // calismak, ilk 3 bant zaten bagliyken taramayi hic baslatmazdi.
+  if (allEnabledSlotsConnected() && s_pairingSlot < 0) return;  // aranacak bir sey kalmadi
   // Yerel bir bayrak yerine kutuphanenin GERCEK tarama durumunu sorulur -
   // aksi halde (SAHA BULGUSU) bir onceki tarama/baglanti dongusunde bu
   // bayrak gercek durumdan kopabiliyor ve tarama bir daha HICBIR ZAMAN
@@ -280,16 +369,28 @@ static void startContinuousScan() {
 }
 
 void HeartRateHardware::begin() {
+  // 1) Config.h derleme-zamani varsayilanlari yuklenir...
+  for (int i = 0; i < SLOT_COUNT; i++) {
+    s_slots[i].label = HR_DEVICE_LABEL[i];
+    const char* defaultMac = HR_DEVICE_MAC[i];
+    strncpy(s_slots[i].configuredMac, defaultMac != nullptr ? defaultMac : "", sizeof(s_slots[i].configuredMac) - 1);
+    s_slots[i].configuredMac[sizeof(s_slots[i].configuredMac) - 1] = '\0';
+  }
+  // ...sonra panelden "Yeni Bant Ekle" ile ogrenilmis MAC'ler (varsa) bunlarin
+  // UZERINE yazar - bkz. Config.h HR_MAC_OVERRIDE_FILE notu. Bu yuzden
+  // anyMacSet/legacy karari OVERRIDE'lar UYGULANDIKTAN SONRA hesaplanir:
+  // Config.h'da hicbir MAC yoksa ama panelden biri ogrenilmisse legacy moda
+  // (MAC kontrolsuz, sadece slot 0) DUSMEMELI.
+  loadMacOverrides();
+
   bool anyMacSet = false;
   for (int i = 0; i < SLOT_COUNT; i++) {
-    if (HR_DEVICE_MAC[i] != nullptr && HR_DEVICE_MAC[i][0] != '\0') { anyMacSet = true; break; }
+    if (s_slots[i].configuredMac[0] != '\0') { anyMacSet = true; break; }
   }
   s_legacyMode = !anyMacSet;
 
   for (int i = 0; i < SLOT_COUNT; i++) {
-    s_slots[i].label = HR_DEVICE_LABEL[i];
-    s_slots[i].configuredMac = HR_DEVICE_MAC[i];
-    bool macSet = HR_DEVICE_MAC[i] != nullptr && HR_DEVICE_MAC[i][0] != '\0';
+    bool macSet = s_slots[i].configuredMac[0] != '\0';
     s_slots[i].enabled = s_legacyMode ? (i == 0) : macSet;  // eski tek-cihaz davranisi: sadece slot 0, MAC kontrolu yok
   }
 
@@ -310,19 +411,36 @@ void HeartRateHardware::begin() {
   // SAHADA DOGRULANDI (2026-08): interval==window (%100 duty-cycle, hic bosluksuz
   // tarama) WiFi+BLE coexistence zaman paylasimini tamamen BLE'ye kaydiriyordu -
   // telefon WiFi AP'ye assoc oluyordu ama DHCP hicbir zaman tamamlanmiyordu (IP
-  // asla atanmadi). window'u interval'in altina indirmek (burada ~%30 duty-cycle)
-  // WiFi'ye DHCP gibi zaman-hassas alisverisler icin yeterli radyo zamani birakiyor,
-  // BLE taramasi surekli olmaya devam ediyor (sadece daha az agresif). NOT: bu
-  // oran 1-2 baglantiyla dogrulandi, SLOT_COUNT=9'a cikildiginda (bkz.
-  // HeartRateHardware.h) daha fazla baglanti kurulacaksa bu deger sahada
-  // yeniden gozden gecirilmeli.
-  scan->setInterval(160);
-  scan->setWindow(48);
+  // asla atanmadi). window'u interval'in altina indirmek WiFi'ye zaman-hassas
+  // alisverisler icin yeterli radyo zamani birakiyor, BLE taramasi surekli olmaya
+  // devam ediyor (sadece daha az agresif).
+  // GUNCELLEME (2026-08-21): ONCEKI ~%30 duty-cycle (160/48) artik YETERSIZ
+  // bulundu - telefon WiFi AP'ye HIC assoc OLAMIYORDU (DHCP degil, daha erken
+  // asama). BLE'yi TAMAMEN kapatinca WiFi sorunsuz baglaniyor (izole test ile
+  // dogrulandi), yani coexistence sorunu daha da agirlasmis/hassaslasmis
+  // durumda. Duty-cycle ~%10'a dusuruldu (300/30) - WiFi'ye cok daha fazla
+  // bosluk birakiyor, BLE kesif hizi yavaslar (bant eslesmesi/yeniden baglanma
+  // birkac saniye daha uzun surebilir) ama nabiz OTURUMU (bir kez baglandiktan
+  // sonraki notify akisi) taramadan bagimsiz oldugu icin ETKILENMEZ. Hala
+  // yetersizse: coexistence bir "tamamen kapat/ac" penceresi (WiFi STA
+  // baglanma olayinda BLE taramayi gecici durdurma) ile cozulmeli - bkz. Config.h
+  // "durdur/baslat dongusu crash'e yol aciyordu" notu, o yuzden boyle bir
+  // mekanizma DIKKATLI, sadece kisa bir pencerede (surekli degil) yapilmali.
+  scan->setInterval(600);
+  scan->setWindow(30);
 
   startContinuousScan();
 }
 
-void HeartRateHardware::poll(unsigned long /*nowMs*/) {
+void HeartRateHardware::poll(unsigned long nowMs) {
+  if (s_pairingSlot >= 0 && nowMs > s_pairingDeadlineMs) {
+    Serial.print("[BLE] Bant ogrenme zaman asimina ugradi, slot=");
+    Serial.println(s_pairingSlot);
+    s_pairingSlot = -1;
+    s_lastPairingState = HrPairingState::Timeout;
+    s_needRescan = true;  // pairing bittigine gore tarama normal (allEnabledSlotsConnected) kurala geri donmeli
+  }
+
   if (s_shouldConnect) {
     s_shouldConnect = false;
     int slot = s_pendingSlot;
@@ -373,4 +491,26 @@ bool HeartRateHardware::hasFreshSignal(int slot, unsigned long nowMs) const {
   if (s.latestContactSupported && !s.latestContact) return false;
   if (s.lastChangeMs != 0 && nowMs - s.lastChangeMs > HR_STUCK_TIMEOUT_MS) return false;
   return true;
+}
+
+bool HeartRateHardware::startPairing(int slot) {
+  if (slot < 0 || slot >= SLOT_COUNT) return false;
+  if (s_slots[slot].connected) return false;  // zaten calisan bir bandin MAC'ini yanlislikla degistirmeyi onler
+
+  s_pairingSlot = slot;
+  s_pairingDeadlineMs = millis() + HR_PAIRING_TIMEOUT_MS;
+  s_lastPairingSlot = slot;
+  s_lastPairingState = HrPairingState::Waiting;
+  s_needRescan = true;  // tum etkin slotlar zaten bagliysa (bkz. startContinuousScan) taramayi yeniden tetikler
+  return true;
+}
+
+void HeartRateHardware::cancelPairing() {
+  s_pairingSlot = -1;
+  s_lastPairingState = HrPairingState::Idle;
+}
+
+HrPairingState HeartRateHardware::pairingState(int slot) const {
+  if (slot != s_lastPairingSlot) return HrPairingState::Idle;
+  return s_lastPairingState;
 }

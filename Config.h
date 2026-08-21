@@ -23,7 +23,7 @@ static const unsigned long ALERT_PULSE_GAP_MS = 250;  // desendeki titresimler a
 static const unsigned long ALERT_REPEAT_MS = 30000;   // kritik durum surerken tekrar uyari araligi
 
 // ---------------- WiFi ----------------
-static const char* const WIFI_AP_NAME = "TOAPERFORM";
+static const char* const WIFI_AP_NAME = "TOA-IcYuk";
 static const char* const WIFI_AP_PASS = "12345678";
 static const int WIFI_CHANNEL = 1;
 static const char* const DEVICE_NAME = "Oyuncu1";
@@ -190,6 +190,14 @@ static const float BREATHING_MAX_VALID_BPM = 70.0f;  // bu ustundeki sonuc gurul
 // islenir. Slot 0 DISINDAKILER (Bant2..Bant9) BILEREK bu cihazin kendi
 // yorgunluk skoruna KATILMAZ - hepsi roster'dan atanan KENDI oyuncusuna gore
 // AYRI hesaplanir (bkz. Globals.h, TOAPERFORM.ino).
+// PANELDEN "Yeni Bant Ekle" (2026-08 ekleme, bkz. HeartRateHardware.h/.cpp):
+// asagidaki HR_DEVICE_MAC[] SADECE ilk-yukleme varsayilanidir - panelden
+// ogrenilen MAC'ler LittleFS'e (HR_MAC_OVERRIDE_FILE) yazilir ve bunlarin
+// UZERINE gecer, boylece yeni bir bant eklemek icin artik laptopla MAC'i
+// Serial Monitor'den okuyup burayi elle duzenleyip reflash etmek GEREKMEZ.
+static const char* const HR_MAC_OVERRIDE_FILE = "/hrmacs.dat";
+static const unsigned long HR_PAIRING_TIMEOUT_MS = 20000;  // "Bandi Tara" sonrasi yeni cihaz aranacak azami sure
+
 static const int HR_DEVICE_SLOTS = 9;  // HeartRateHardware::SLOT_COUNT ile AYNI olmali
 static const char* const HR_DEVICE_MAC[HR_DEVICE_SLOTS] = {
   "24:ac:ac:07:45:27",  // slot 0 - Polar Sense 0745273E
