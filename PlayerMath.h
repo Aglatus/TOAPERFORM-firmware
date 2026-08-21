@@ -115,6 +115,39 @@ HrvMetrics calculateHrv(const uint16_t* rrMs, int count);
 // hrAtMark < 0 ise -1.
 int calculateHrrDrop(int hr0, int hrAtMark);
 
+// ---------------- HRV Taban Cizgisi (oturum-ici RMSSD, EWMA) ----------------
+// 2026-08 (ekleme, bkz. Config.h HRV_BASELINE_LAMBDA/MIN_SESSIONS notu): sadece
+// GERCEKTEN olculen oturum-ortalama RMSSD degerlerinden EWMA ile guncellenir -
+// manuel/varsayimsal veri yok. Ilk oturumda (existingSessions <= 0) taban
+// dogrudan o oturumun ortalamasi olur. sessionAvgRmssd <= 0 ise (o oturumda
+// hic gecerli RR ornegi olculmediyse) taban DEGISMEDEN doner.
+float updateHrvBaselineEwma(float existingBaseline, int existingSessions, float sessionAvgRmssd);
+
+// ---------------- Composite Hazir Olma Skoru ----------------
+// Antrenman ONCESI (sabah) elde bulunan bilgilerin (wellness anketi, ACWR,
+// bir onceki oturumun HRV taban sapmasi) TEK bir 0-100 skora birlestirilmis
+// hali - bkz. Config.h READINESS notu. Bilerek fatigueScore/canli nabiz
+// KATILMAZ: bu ikisi zaten antrenman SIRASINDA ayri gosterilen, "su an"
+// metrikleri - readiness antrenman BASLAMADAN ONCEKI durumu ozetler.
+struct ReadinessInputs {
+  bool hasWellness = false;
+  int wellnessSum = 0;        // 5-50, dusuk = iyi (bkz. wellnessBand)
+  bool hasAcwr = false;
+  float acwr = 0;
+  int acwrDays = 0;           // 3'ten az ise ACWR anlamli sayilmaz (bkz. calculateAcwr)
+  bool hasHrvBaseline = false;
+  float hrvDeviationPct = 0;  // (son tamamlanan oturumun ort. RMSSD'si - kisisel taban) / taban * 100
+};
+
+struct ReadinessResult {
+  bool hasEnoughData = false;   // en az 2 bilesen mevcut degilse skor URETILMEZ
+  int score = 0;                // 0-100, yuksek = iyi
+  const char* band = "Yetersiz veri";
+  const char* colorHex = "#8aa08f";
+};
+
+ReadinessResult calculateReadiness(const ReadinessInputs& in);
+
 // ---------------- Wellness (Hooper Index tarzi, 5 soru) ----------------
 // Kaynak: Hooper SL, Mackinnon LT ve ark. - 5 soru (uyku/yorgunluk/agri/
 // stres/ruh hali), her biri 1 (en iyi) - 10 (en kotu). sum: bu 5 sorunun

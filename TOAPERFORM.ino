@@ -141,6 +141,16 @@ void loop() {
         hrRmssdMs[i] = hrv.rmssdMs;
         hrSdnnMs[i] = hrv.sdnnMs;
         hrPnn50[i] = hrv.pnn50Pct;
+
+        // HRV Taban Cizgisi (2026-08 ekleme, bkz. Config.h/RosterStore.h notu):
+        // oturum boyunca GERCEK RMSSD orneklerini biriktirir - oturum sonunda
+        // (WebRoutes handleReset) ortalamasi kisisel tabana (EWMA) katilir.
+        // Sadece gecerli (>=2 RR ornegi olan, dolayisiyla rmssdMs>0 olan) turlar
+        // sayilir.
+        if (hrv.rmssdMs > 0) {
+          hrRmssdSessionSum[i] += hrv.rmssdMs;
+          hrRmssdSessionCount[i]++;
+        }
       }
 
       // Kalp Hizi Toparlanmasi (HRR) testi - panelden manuel baslatilir (bkz.

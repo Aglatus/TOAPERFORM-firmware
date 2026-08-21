@@ -39,6 +39,9 @@ float hrSdnnMs[HR_SLOTS];
 float hrPnn50[HR_SLOTS];
 bool hrRrSupported[HR_SLOTS];
 
+float hrRmssdSessionSum[HR_SLOTS];
+int hrRmssdSessionCount[HR_SLOTS];
+
 bool hrrActive[HR_SLOTS];
 unsigned long hrrStartMs[HR_SLOTS];
 int hrrHr0[HR_SLOTS];
@@ -107,6 +110,9 @@ void resetSession() {
     hrrHr0[i] = 0;
     hrrHr60[i] = -1;
     hrrHr120[i] = -1;
+
+    hrRmssdSessionSum[i] = 0;
+    hrRmssdSessionCount[i] = 0;
   }
 
   sessionStartMs = millis();

@@ -50,10 +50,10 @@ static void handleData() {
   char timeBuf[16];
   formatTime(sessionSeconds, timeBuf, sizeof(timeBuf));
 
-  // ~650 bayt/slot (isim+uyari+ongoru+ACWR+HRV+HRR+wellness metinleri dahil en
-  // kotu durum) x HR_SLOTS + sarici icin genis bir pay - bkz. SLOT_COUNT
-  // (Config.h/HeartRateHardware.h).
-  static char json[HR_SLOTS * 750 + 64];
+  // ~800 bayt/slot (isim+uyari+ongoru+ACWR+HRV+HRR+wellness+HRV taban+readiness
+  // metinleri dahil en kotu durum) x HR_SLOTS + sarici icin genis bir pay -
+  // bkz. SLOT_COUNT (Config.h/HeartRateHardware.h).
+  static char json[HR_SLOTS * 900 + 64];
   int off = 0;
   off += snprintf(json + off, sizeof(json) - off, "{\"trainingTime\":\"%s\",\"slots\":[", timeBuf);
 
@@ -67,11 +67,10 @@ static void handleData() {
     else if (heartRateHardware.isScanning()) hrStatus = "Araniyor";
     else hrStatus = "Bagli degil";
 
+    int rosterIdx = hasPlayer ? rosterStore.findIndexById(slotPlayerId[i]) : -1;
+
     float personalMaxHr = 0;
-    if (hasPlayer) {
-      int idx = rosterStore.findIndexById(slotPlayerId[i]);
-      if (idx >= 0) personalMaxHr = rosterStore.playerAt(idx).maxHrEver;
-    }
+    if (rosterIdx >= 0) personalMaxHr = rosterStore.playerAt(rosterIdx).maxHrEver;
     bool baselineReady = hasPlayer && personalMaxHr >= PERSONAL_MIN_HR_SAMPLE;
 
     char trendWarning[100] = "";
@@ -98,6 +97,32 @@ static void handleData() {
     RosterStore::WellnessEntry wellness;
     if (hasPlayer && today >= 0) wellness = rosterStore.todayWellness(slotPlayerId[i], today);
 
+    // HRV Taban Cizgisi + Composite Hazir Olma Skoru (2026-08 eklemeleri, bkz.
+    // RosterStore.h/PlayerMath.h notlari) - ikisi de TAMAMEN otomatik/gercek
+    // veriden turer, bilerek fatigueScore/canli nabiz KATILMAZ (bkz.
+    // PlayerMath::ReadinessInputs notu - readiness antrenman ONCESI durumu
+    // ozetler, "su an" metrikleri zaten ayri gosteriliyor).
+    bool hrvBaselineReady = false;
+    float hrvBaselineRmssd = 0;
+    float hrvDeviationPct = 0;
+    PlayerMath::ReadinessInputs readinessIn;
+    readinessIn.hasWellness = wellness.hasData;
+    readinessIn.wellnessSum = wellness.sum;
+    readinessIn.hasAcwr = (acwr.daysWithData >= 3);
+    readinessIn.acwr = acwr.acwr;
+    readinessIn.acwrDays = acwr.daysWithData;
+    if (rosterIdx >= 0) {
+      const RosterPlayer& rp = rosterStore.playerAt(rosterIdx);
+      hrvBaselineReady = rp.hrvBaselineSessions >= HRV_BASELINE_MIN_SESSIONS;
+      hrvBaselineRmssd = rp.hrvBaselineRmssd;
+      if (hrvBaselineReady && rp.hrvLastSessionRmssd > 0) {
+        hrvDeviationPct = ((rp.hrvLastSessionRmssd - rp.hrvBaselineRmssd) / rp.hrvBaselineRmssd) * 100.0f;
+        readinessIn.hasHrvBaseline = true;
+        readinessIn.hrvDeviationPct = hrvDeviationPct;
+      }
+    }
+    PlayerMath::ReadinessResult readiness = PlayerMath::calculateReadiness(readinessIn);
+
     off += snprintf(json + off, sizeof(json) - off,
       "%s{\"slot\":%d,\"bandLabel\":\"%s\",\"enabled\":%s,"
       "\"playerId\":%d,\"playerName\":\"%s\",\"baselineReady\":%s,"
@@ -107,7 +132,9 @@ static void handleData() {
       "\"acwr\":%.2f,\"acwrBand\":\"%s\",\"acwrDays\":%d,\"monotony\":%.2f,\"monotonyBand\":\"%s\","
       "\"rrSupported\":%s,\"rmssd\":%.1f,\"sdnn\":%.1f,\"pnn50\":%.1f,"
       "\"hrrActive\":%s,\"hrrElapsedSec\":%lu,\"hrrHr0\":%d,\"hrr1\":%d,\"hrr2\":%d,"
-      "\"wellnessHasData\":%s,\"wellnessSum\":%d,\"wellnessBand\":\"%s\"}",
+      "\"wellnessHasData\":%s,\"wellnessSum\":%d,\"wellnessBand\":\"%s\","
+      "\"hrvBaselineReady\":%s,\"hrvBaselineRmssd\":%.1f,\"hrvDeviationPct\":%.1f,"
+      "\"readinessReady\":%s,\"readinessScore\":%d,\"readinessBand\":\"%s\",\"readinessColor\":\"%s\"}",
       i == 0 ? "" : ",",
       i, heartRateHardware.label(i), enabled ? "true" : "false",
       slotPlayerId[i], hasPlayer ? slotPlayerName[i] : "", baselineReady ? "true" : "false",
@@ -119,7 +146,9 @@ static void handleData() {
       acwr.acwr, acwr.band, acwr.daysWithData, acwr.monotony, acwr.monotonyBand,
       hrRrSupported[i] ? "true" : "false", hrRmssdMs[i], hrSdnnMs[i], hrPnn50[i],
       hrrActive[i] ? "true" : "false", hrrElapsedSec, hrrHr0[i], hrr1, hrr2,
-      wellness.hasData ? "true" : "false", wellness.sum, wellness.band
+      wellness.hasData ? "true" : "false", wellness.sum, wellness.band,
+      hrvBaselineReady ? "true" : "false", hrvBaselineRmssd, hrvDeviationPct,
+      readiness.hasEnoughData ? "true" : "false", readiness.score, readiness.band, readiness.colorHex
     );
   }
 
@@ -301,6 +330,14 @@ static void handleReset() {
       // istatistik) CARPILMAMIS ham yukle guncellenir - mac agirligi SADECE
       // ACWR'nin GUNLUK yukune uygulanir, kariyer toplamini sismesin diye.
       rosterStore.updateAfterSession(slotPlayerId[i], sessionLoad, sessionMaxHr[i]);
+
+      // HRV Taban Cizgisi (2026-08 ekleme): bu oturumda gecerli RR-interval
+      // verisi toplandiysa (hrRmssdSessionCount>0) ortalamasi kisisel tabana
+      // katilir - bkz. RosterStore::updateHrvBaseline/PlayerMath::updateHrvBaselineEwma.
+      if (hrRmssdSessionCount[i] > 0) {
+        float sessionAvgRmssd = hrRmssdSessionSum[i] / hrRmssdSessionCount[i];
+        rosterStore.updateHrvBaseline(slotPlayerId[i], sessionAvgRmssd);
+      }
 
       // ACWR icin: bu antrenmanin/macin yukunu o oyuncunun GUNLUK toplamina
       // ekler (bkz. Config.h ACWR notu). sessionTs yoksa (telefon saatini hic

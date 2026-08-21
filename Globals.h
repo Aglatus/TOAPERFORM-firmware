@@ -79,6 +79,14 @@ extern float hrSdnnMs[HR_SLOTS];
 extern float hrPnn50[HR_SLOTS];
 extern bool hrRrSupported[HR_SLOTS];
 
+// ---------------- HRV Taban Cizgisi - oturum-ici biriktirme (2026-08 ekleme) ----------------
+// Oturum boyunca (rrSupported oldugu her 1Hz turda, gecerli bir RMSSD ornegi
+// hesaplandiginda) hrRmssdMs ornekleri toplanir - oturum sonunda (WebRoutes
+// handleReset) ortalamasi RosterStore::updateHrvBaseline'a verilir. Diger
+// oturum-basi sayaclar gibi resetSession() tarafindan sifirlanir.
+extern float hrRmssdSessionSum[HR_SLOTS];
+extern int hrRmssdSessionCount[HR_SLOTS];
+
 // ---------------- Kalp Hizi Toparlanmasi (HRR) testi (bkz. Config.h) ----------------
 // Panelden manuel tetiklenir - "efor bitti" anini cihaz kendisi algilayamaz.
 extern bool hrrActive[HR_SLOTS];

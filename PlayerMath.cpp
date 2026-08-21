@@ -177,6 +177,63 @@ int calculateHrrDrop(int hr0, int hrAtMark) {
   return hr0 - hrAtMark;
 }
 
+float updateHrvBaselineEwma(float existingBaseline, int existingSessions, float sessionAvgRmssd) {
+  if (sessionAvgRmssd <= 0) return existingBaseline;
+  if (existingSessions <= 0) return sessionAvgRmssd;
+  return sessionAvgRmssd * HRV_BASELINE_LAMBDA + existingBaseline * (1.0f - HRV_BASELINE_LAMBDA);
+}
+
+ReadinessResult calculateReadiness(const ReadinessInputs& in) {
+  ReadinessResult out;
+
+  float sum = 0;
+  int n = 0;
+
+  if (in.hasWellness) {
+    float wellnessScore = ((50.0f - in.wellnessSum) / 45.0f) * 100.0f;
+    if (wellnessScore < 0) wellnessScore = 0;
+    if (wellnessScore > 100) wellnessScore = 100;
+    sum += wellnessScore;
+    n++;
+  }
+
+  if (in.hasAcwr && in.acwrDays >= 3) {
+    float acwrScore;
+    if (in.acwr < 0.8f) acwrScore = 70;         // dusuk yuk - akut riskli degil ama detraining olasi
+    else if (in.acwr <= 1.3f) acwrScore = 100;  // sweet spot
+    else if (in.acwr <= 1.5f) acwrScore = 50;   // orta risk
+    else acwrScore = 15;                         // yuksek sakatlanma riski
+    sum += acwrScore;
+    n++;
+  }
+
+  if (in.hasHrvBaseline) {
+    float hrvScore = 100.0f + in.hrvDeviationPct * 2.5f;
+    if (hrvScore < 0) hrvScore = 0;
+    if (hrvScore > 100) hrvScore = 100;
+    sum += hrvScore;
+    n++;
+  }
+
+  if (n < 2) return out;  // "Yetersiz veri" - eksik veriden uydurma skor yok
+
+  out.hasEnoughData = true;
+  out.score = (int)((sum / n) + 0.5f);
+
+  if (out.score >= READINESS_GOOD_MIN) {
+    out.band = "HAZIR";
+    out.colorHex = "#22c55e";
+  } else if (out.score >= READINESS_MODERATE_MIN) {
+    out.band = "ORTA";
+    out.colorHex = "#facc15";
+  } else {
+    out.band = "DIKKAT";
+    out.colorHex = "#ef4444";
+  }
+
+  return out;
+}
+
 const char* wellnessBand(int sum) {
   if (sum <= WELLNESS_GOOD_MAX) return "Iyi";
   if (sum <= WELLNESS_MODERATE_MAX) return "Orta";

@@ -23,6 +23,13 @@ struct RosterPlayer {
   int sessionCount = 0;
   float totalLoad = 0;
   float maxHrEver = 0;   // bpm - bu oyuncunun kisisel nabiz tavani (bkz. Config.h HR_ZONEn_MIN_PCT)
+
+  // ---------------- HRV Taban Cizgisi (2026-08 ekleme, bkz. Config.h notu) ----------------
+  // TAMAMEN otomatik - manuel giris/olcum adimi yok, sadece GERCEKTEN olculen
+  // RR-interval'lardan (bkz. RosterStore::updateHrvBaseline) turetilir.
+  float hrvBaselineRmssd = 0;     // EWMA - oyuncunun oturum-ici RMSSD'sinin KENDI tipik seviyesi (ms)
+  int hrvBaselineSessions = 0;    // taban cizgisine katkida bulunan oturum sayisi
+  float hrvLastSessionRmssd = 0;  // en son tamamlanan oturumun ortalama RMSSD'si (ms) - readiness icin
 };
 
 class RosterStore {
@@ -43,6 +50,13 @@ public:
   // Bir antrenman sonunda (o slota atanmis oyuncunun) rekorlarini gunceller
   // ve dosyaya yazar. sessionMaxHr rekor kirdiysa maxHrEver guncellenir.
   void updateAfterSession(int id, float sessionLoad, float sessionMaxHr);
+
+  // ---------------- HRV Taban Cizgisi (bkz. Config.h/PlayerMath.h notu) ----------------
+  // Bir antrenman sonunda (RR-interval destekli, o oturumda en az bir gecerli
+  // ornek olculmusse) o oturumun ORTALAMA RMSSD'sini kaydeder ve EWMA ile
+  // kisisel taban cizgisine katar (bkz. PlayerMath::updateHrvBaselineEwma).
+  // sessionAvgRmssd <= 0 ise (hic olcum yoksa) sessizce hicbir sey yapmaz.
+  void updateHrvBaseline(int id, float sessionAvgRmssd);
 
   // ---------------- ACWR / Monotonluk (bkz. Config.h "ACWR" notu) ----------------
   // Bir antrenman sonunda o oyuncunun GUNLUK toplam yukune (dayIndex = epoch

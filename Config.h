@@ -260,3 +260,29 @@ static const float MATCH_LOAD_MULTIPLIER = 1.5f;
 static const char* const WELLNESS_FILE = "/wellness.dat";  // CSV: playerId,dayIndex,sleep,fatigue,soreness,stress,mood
 static const int WELLNESS_GOOD_MAX = 20;    // bu toplamin ALTINDA/ESITI "iyi"
 static const int WELLNESS_MODERATE_MAX = 32;  // bu toplamin ALTINDA/ESITI "orta", ustu "kotu"
+
+// ---------------- HRV Taban Cizgisi (Readiness Baseline) ----------------
+// 2026-08 (ekleme): PlayerMath::calculateHrv zaten ANLIK/oturum-ici RMSSD
+// hesapliyordu (bkz. yukaridaki "RR-Interval / HRV" notu) - burada eklenen,
+// o oturum ORTALAMASININ oyuncunun KENDI GECMISINE gore tipik seviyesini
+// (EWMA ile) takip eden bir taban cizgisi. Hicbir tahmini/varsayimsal deger
+// YOK - sadece GERCEKTEN olculen RR-interval'lardan otomatik turetilir, hicbir
+// manuel giris/olcum adimi gerekmez (bkz. RosterStore.cpp - bir ara TRIMP icin
+// manuel bir restingHr alani denenmis ve kullanici talebiyle geri alinmisti;
+// buradaki taban tamamen otomatik oldugu ve "kalp ne diyorsa" onun disina
+// cikmadigi icin o kaygi burada gecerli degil). ONEMLI SINIR: hala EGZERSIZ-ICI
+// HRV'dir (dinlenik/toparlanma HRV'si degil, bkz. metodolojik sinir notu) -
+// bu deger sadece oyuncunun KENDI tipik oturum-ici RMSSD'sinden bugunku
+// SAPMAYI gosterir, klinik bir "toparlanma skoru" degildir.
+static const float HRV_BASELINE_LAMBDA = 0.3f;       // EWMA agirligi: yeni oturumun tabana katkisi
+static const int HRV_BASELINE_MIN_SESSIONS = 3;      // bu kadar oturumdan once taban "hazir" sayilmaz
+
+// ---------------- Composite Hazir Olma Skoru (Readiness) ----------------
+// Wellness + ACWR + HRV taban sapmasini TEK bir 0-100 skora birlestirir - koc
+// antrenman ONCESI (sabah) tek bakista "bu oyuncuyu bugun ne kadar yukleyeyim"
+// sorusuna kaba bir cevap alsin diye (bkz. PlayerMath::calculateReadiness).
+// Muhendislik tahmini agirliklandirma - klinik/bilimsel olarak DOGRULANMAMIS,
+// sahada gercek veriyle ayarlanmali. Eksik veriden uydurma skor URETILMEZ -
+// en az 2 bilesen mevcut degilse "Yetersiz veri" doner.
+static const int READINESS_GOOD_MIN = 70;      // bu ve uzeri "HAZIR"
+static const int READINESS_MODERATE_MIN = 45;  // bu ve uzeri (70'in altinda) "ORTA", altı "DIKKAT"

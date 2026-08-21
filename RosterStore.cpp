@@ -51,6 +51,19 @@ void RosterStore::updateAfterSession(int id, float sessionLoad, float sessionMax
   saveAll();
 }
 
+void RosterStore::updateHrvBaseline(int id, float sessionAvgRmssd) {
+  if (sessionAvgRmssd <= 0) return;
+  int idx = findIndexById(id);
+  if (idx < 0) return;
+
+  RosterPlayer& p = players_[idx];
+  p.hrvBaselineRmssd = PlayerMath::updateHrvBaselineEwma(p.hrvBaselineRmssd, p.hrvBaselineSessions, sessionAvgRmssd);
+  p.hrvBaselineSessions++;
+  p.hrvLastSessionRmssd = sessionAvgRmssd;
+
+  saveAll();
+}
+
 // LOADS_FILE satir bicimi: playerId,dayIndex,load - TUM oyuncular icin ORTAK
 // tek dosya (30 oyuncu x ~42 gun bile kucuk kalir, ayri dosya acmaya gerek yok).
 void RosterStore::recordDailyLoad(int id, long dayIndex, float load) {
@@ -183,7 +196,7 @@ void RosterStore::load() {
   File f = LittleFS.open(ROSTER_FILE, "r");
   if (!f) return;
 
-  char lineBuf[96];
+  char lineBuf[128];
   while (readLineToBuffer(f, lineBuf, sizeof(lineBuf))) {
     if (strlen(lineBuf) == 0) continue;
     if (count_ >= MAX_ROSTER_PLAYERS) break;
@@ -194,11 +207,14 @@ void RosterStore::load() {
     // sscanf format string'i derleme zamaninda sabit olmali, ROSTER_NAME_MAX
     // degisirse burasi da elle guncellenmeli.
     // NOT: bir ara TRIMP icin 6. bir alan (restingHr) denenmisti, kullanici
-    // talebiyle geri alindi - eski dosyalarda o alan varsa sscanf onu okumadan
-    // 5 alanda basariyla durur (fazlasi sessizce yok sayilir), veri kaybi olmaz.
-    int scanned = sscanf(lineBuf, "%d,%23[^,],%d,%f,%f",
-      &p.id, nameBuf, &p.sessionCount, &p.totalLoad, &p.maxHrEver);
-    if (scanned != 5) continue;
+    // talebiyle geri alindi. HRV taban alanlari (2026-08 ekleme) AYNI geriye-
+    // uyumluluk deseniyle eklendi: eski (5 alanli) dosyalarda bu alanlar yoktur -
+    // sscanf onlari okumadan 5 alanda basariyla durur (RosterPlayer'in kendi
+    // varsayilan degerleri = 0 gecerli kalir), veri kaybi olmaz.
+    int scanned = sscanf(lineBuf, "%d,%23[^,],%d,%f,%f,%f,%d,%f",
+      &p.id, nameBuf, &p.sessionCount, &p.totalLoad, &p.maxHrEver,
+      &p.hrvBaselineRmssd, &p.hrvBaselineSessions, &p.hrvLastSessionRmssd);
+    if (scanned < 5) continue;
 
     strncpy(p.name, nameBuf, sizeof(p.name) - 1);
     p.name[sizeof(p.name) - 1] = '\0';
@@ -213,11 +229,12 @@ void RosterStore::saveAll() {
   File f = LittleFS.open(ROSTER_FILE, "w");
   if (!f) return;
 
-  char buf[96];
+  char buf[128];
   for (int i = 0; i < count_; i++) {
     const RosterPlayer& p = players_[i];
-    snprintf(buf, sizeof(buf), "%d,%s,%d,%.1f,%.0f",
-      p.id, p.name, p.sessionCount, p.totalLoad, p.maxHrEver);
+    snprintf(buf, sizeof(buf), "%d,%s,%d,%.1f,%.0f,%.1f,%d,%.1f",
+      p.id, p.name, p.sessionCount, p.totalLoad, p.maxHrEver,
+      p.hrvBaselineRmssd, p.hrvBaselineSessions, p.hrvLastSessionRmssd);
     f.println(buf);
   }
   f.close();

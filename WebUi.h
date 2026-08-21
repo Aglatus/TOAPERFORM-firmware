@@ -897,6 +897,40 @@ function zoneDistBar(zoneSec){
   return zoneSec.map((v,i) => `<div style="width:${(v/total*100).toFixed(1)}%;background:${colors[i]}"></div>`).join('');
 }
 
+// ---------------- Takim Ozet Seridi (2026-08 ekleme) ----------------
+// Kart gorunumlerinden (Ring/Monitor/Trend/vb.) BAGIMSIZ, tek bakista "kac
+// oyuncu KRITIK/UYARI'da" sayisini veren kompakt bir serit - koc tek tek
+// karti taramadan (ozellikle 9 oyuncuya kadar cikan bir takimda) durumu aninda
+// gorsun diye. Saf frontend: /data'dan zaten gelen riskStatus'lari sayar,
+// yeni bir backend hesaplamasi gerekmez.
+function renderTeamRiskSummary(rows){
+  const el = document.getElementById('teamRiskSummary');
+  if (!el) return;
+  if (rows.length === 0) { el.style.display = 'none'; return; }
+
+  let kritik = 0, uyari = 0, normal = 0;
+  rows.forEach(s => {
+    if (s.riskStatus === 'KRITIK') kritik++;
+    else if (s.riskStatus === 'UYARI') uyari++;
+    else normal++;
+  });
+
+  el.style.display = 'flex';
+  el.innerHTML = `
+    <div style="flex:1;text-align:center;padding:8px;border-radius:10px;background:${kritik > 0 ? '#ef4444' : 'var(--card2)'}">
+      <div style="font-size:20px;font-weight:900;color:${kritik > 0 ? '#020617' : 'var(--text)'}">${kritik}</div>
+      <div style="font-size:9px;font-weight:800;color:${kritik > 0 ? '#020617cc' : 'var(--muted)'}">KRITIK</div>
+    </div>
+    <div style="flex:1;text-align:center;padding:8px;border-radius:10px;background:${uyari > 0 ? '#facc15' : 'var(--card2)'}">
+      <div style="font-size:20px;font-weight:900;color:${uyari > 0 ? '#020617' : 'var(--text)'}">${uyari}</div>
+      <div style="font-size:9px;font-weight:800;color:${uyari > 0 ? '#020617cc' : 'var(--muted)'}">UYARI</div>
+    </div>
+    <div style="flex:1;text-align:center;padding:8px;border-radius:10px;background:var(--card2)">
+      <div style="font-size:20px;font-weight:900;color:var(--text)">${normal}</div>
+      <div style="font-size:9px;font-weight:800;color:var(--muted)">NORMAL</div>
+    </div>`;
+}
+
 // Her enabled+atanmis slotu bir "oyuncu karti" olarak ozetleyen takim panosu -
 // koc tum oyunculari tek bakista gorur, tek tek kart acmasi gerekmez.
 function renderTeamDashboard(slots){
@@ -907,6 +941,7 @@ function renderTeamDashboard(slots){
   rows.forEach(s => pushBpmHistory(s.slot, s.bpm, s.fresh));
   checkSyncIntensity(slots);
   renderHalftimeResults();
+  renderTeamRiskSummary(rows);
 
   if (rows.length === 0) {
     grid.innerHTML = '<div class="team-card" id="teamDashEmpty" style="grid-column:1/-1"><div class="tc-name" style="color:var(--muted)">Henuz oyuncu atanmadi</div></div>';
@@ -1050,6 +1085,12 @@ function renderTeamDetailTable(sorted){
       ? ((s.hrr1 >= 0 ? s.hrr1 + 'bpm' : '--') + ' / ' + (s.hrr2 >= 0 ? s.hrr2 + 'bpm' : '--'))
       : '--';
     const wellTxt = s.wellnessHasData ? (s.wellnessSum + '/50 (' + s.wellnessBand + ')') : '--';
+    // HRV Taban Cizgisi (2026-08 ekleme) - son oturumun RMSSD'sinin oyuncunun
+    // KENDI tipik seviyesinden sapmasi, bkz. WebRoutes.cpp/RosterStore.h notu.
+    const hrvBaseTxt = s.hrvBaselineReady
+      ? (s.hrvBaselineRmssd.toFixed(0) + 'ms (' + (s.hrvDeviationPct >= 0 ? '+' : '') + s.hrvDeviationPct.toFixed(0) + '%)')
+      : '--';
+    const readyTxt = s.readinessReady ? (s.readinessScore + ' ' + s.readinessBand) : '--';
     return `<tr onclick="openFocusMode(${s.slot})">
       <td class="dt-name">${s.playerName}</td>
       <td><b>${bpmTxt}</b> <span style="color:var(--muted)">bpm</span></td>
@@ -1061,6 +1102,8 @@ function renderTeamDetailTable(sorted){
       <td>${hrvTxt}</td>
       <td>${hrrTxt}</td>
       <td>${wellTxt}</td>
+      <td>${hrvBaseTxt}</td>
+      <td><span class="legend-chip" style="display:inline-flex;background:${s.readinessReady ? s.readinessColor : 'var(--muted)'};color:#020617;padding:2px 8px;border-radius:999px;font-size:10px">${readyTxt}</span></td>
     </tr>`;
   }).join('');
 
@@ -1068,6 +1111,7 @@ function renderTeamDetailTable(sorted){
     <thead><tr>
       <th>Oyuncu</th><th>Nabiz</th><th>%HRmax</th><th>Bolge</th><th>Yorgunluk</th>
       <th>ACWR</th><th>Monoton.</th><th>HRV (RMSSD/SDNN/pNN50)</th><th>HRR (1dk/2dk)</th><th>Wellness</th>
+      <th>HRV Taban (sapma)</th><th>Hazir Olma</th>
     </tr></thead>
     <tbody>${rows}</tbody>
   </table></div>`;
@@ -1134,6 +1178,14 @@ function renderFocusOverlay(){
   const wellPct = s.wellnessHasData ? Math.max(0, 100 - ((s.wellnessSum - 5) / 45 * 100)) : 0;
   const hrrPct = s.hrr1 >= 0 ? (s.hrr1 / 40) * 100 : 0;
   const hrvTxt = s.rrSupported ? (s.rmssd.toFixed(0) + 'ms &middot; ' + s.sdnn.toFixed(0) + 'ms &middot; %' + s.pnn50.toFixed(0)) : 'Desteklenmiyor';
+  // HRV Taban Cizgisi + Composite Hazir Olma Skoru (2026-08 eklemeleri) - bkz.
+  // WebRoutes.cpp/PlayerMath.h notu, ikisi de antrenman ONCESI/gecmis oturum
+  // verisinden hesaplanir, "su an"ki nabizdan bagimsizdir.
+  const hrvBaseTxt = s.hrvBaselineReady
+    ? ('Taban: ' + s.hrvBaselineRmssd.toFixed(0) + 'ms &middot; son oturum sapmasi: ' + (s.hrvDeviationPct >= 0 ? '+' : '') + s.hrvDeviationPct.toFixed(0) + '%')
+    : 'Taban henuz olusmadi (en az birkac oturum gerekir)';
+  const readinessTxt = s.readinessReady ? (s.readinessScore + ' &middot; ' + s.readinessBand) : 'Yetersiz veri';
+  const readinessColor = s.readinessReady ? s.readinessColor : '#8aa08f';
 
   overlay.innerHTML = `
     <div style="max-width:420px;margin:0 auto;color:#f3f7f1">
@@ -1141,6 +1193,7 @@ function renderFocusOverlay(){
         <div>
           <div style="font-size:11px;font-weight:800;letter-spacing:.08em;color:#8aa08f;text-transform:uppercase">Odak Modu - ${s.bandLabel}</div>
           <div style="font-size:22px;font-weight:900;margin-top:2px">${s.playerName}</div>
+          <div style="margin-top:4px"><span class="legend-chip" style="display:inline-flex;background:${readinessColor};color:#020617;padding:2px 8px;border-radius:999px;font-size:10px;font-weight:800">HAZIR OLMA: ${readinessTxt}</span></div>
         </div>
         <div onclick="closeFocusMode()" style="width:34px;height:34px;border-radius:50%;border:1px solid #1c2c21;display:flex;align-items:center;justify-content:center;color:#8aa08f;font-size:16px;cursor:pointer">&#10005;</div>
       </div>
@@ -1162,6 +1215,7 @@ function renderFocusOverlay(){
       <div style="margin-top:14px;background:linear-gradient(180deg,#0e1811,#0b120d);border:1px solid #1c2c21;border-radius:16px;padding:14px">
         <div style="font-size:11px;color:#8aa08f;font-weight:700">HRV (RMSSD &middot; SDNN &middot; pNN50)</div>
         <div style="font-size:15px;font-weight:900;margin-top:4px">${hrvTxt}</div>
+        <div style="font-size:11px;color:#8aa08f;margin-top:10px">${hrvBaseTxt}</div>
         <div style="display:flex;height:12px;border-radius:999px;overflow:hidden;margin-top:12px">${zoneDistBar(s.zoneSec)}</div>
         <div style="font-size:10px;color:#8aa08f;margin-top:6px">Bu oturum bolge dagilimi</div>
       </div>
@@ -1434,6 +1488,10 @@ function resetSeasonNow(){
       <option value="heat">Isi Kartlari (Polar tarzi)</option>
     </select>
   </div>
+
+  <!-- Takim Ozet Seridi - bkz. renderTeamRiskSummary(). Kac oyuncu KRITIK/UYARI/
+       NORMAL'de, kart gorunumunden bagimsiz tek bakista sayi. -->
+  <div id="teamRiskSummary" style="display:none;gap:8px;margin-bottom:10px"></div>
 
   <!-- Takim Senkron Yogunluk banner'i - bkz. checkSyncIntensity(). Sadece 3+
        oyuncu AYNI ANDA yuksek bolgedeyken gorunur. -->
