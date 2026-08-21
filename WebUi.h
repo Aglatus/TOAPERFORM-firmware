@@ -598,12 +598,19 @@ function slotCardHtml(slot){
         <div class="label">HRV (anlik: RMSSD / SDNN / pNN50)</div>
         <div class="value"><span id="rmssdValue${slot}">--</span> <span class="unit">ms</span></div>
         <div class="value mini">SDNN: <span id="sdnnValue${slot}">--</span> ms &nbsp;|&nbsp; pNN50: <span id="pnn50Value${slot}">--</span>%</div>
-        <div class="legend-chip" style="margin-top:6px;color:var(--muted-light)">Hareket halinde - dinlenme HRV'si degil</div>
+        <div class="value mini">Solunum (tahmini): <span id="breathingValue${slot}">--</span> nefes/dk</div>
+        <div class="legend-chip" style="margin-top:6px;color:var(--muted-light)">Hareket halinde - dinlenme HRV'si/solunumu degil, dusuk tempoda daha guvenilir</div>
       </div>
       <div class="card big">
         <div class="label">Kalp Hizi Toparlanmasi (HRR)</div>
         <div class="value mini" id="hrrStatus${slot}">Test baslatilmadi</div>
         <button class="btn" style="margin-top:8px" onclick="startHrrTestNow(${slot})">Testi Baslat (efor bitince bas)</button>
+      </div>
+      <div class="card big">
+        <div class="label">Ortostatik Toparlanma Testi (yatarken/otururken -&gt; ayaktayken)</div>
+        <div class="value mini" id="orthoStatus${slot}">Test baslatilmadi</div>
+        <button class="btn" style="margin-top:8px" onclick="startOrthoTestNow(${slot})">Testi Baslat (once yatarken/otururken bas)</button>
+        <div class="legend-chip" style="margin-top:6px;color:var(--muted-light)">Ham deger - risk bandi yok. Faz1 2dk sonra panel "Ayaga kalk" der.</div>
       </div>
       <div class="card big">
         <div class="label">Nabiz Bolgeleri (bu oturum)</div>
@@ -705,6 +712,26 @@ function renderSlot(slot, s){
     document.getElementById('rmssdValue'+slot).innerText = s.fresh ? s.rmssd.toFixed(0) : '--';
     document.getElementById('sdnnValue'+slot).innerText = s.fresh ? s.sdnn.toFixed(0) : '--';
     document.getElementById('pnn50Value'+slot).innerText = s.fresh ? s.pnn50.toFixed(0) : '--';
+    document.getElementById('breathingValue'+slot).innerText = (s.fresh && s.breathingRate > 0) ? s.breathingRate.toFixed(0) : '--';
+  }
+
+  // Ortostatik Toparlanma Testi - devam eden fazi ("AYAGA KALK" uyarisi Faz2'ye
+  // gecince gorunur) ya da tamamlanmis son sonucu gosterir.
+  const orthoEl = document.getElementById('orthoStatus'+slot);
+  if (s.orthoActive) {
+    if (s.orthoPhase === 1) {
+      orthoEl.innerText = 'Faz 1 (yatarken/otururken) suruyor... (' + s.orthoElapsedSec + 'sn / 120sn)';
+    } else {
+      orthoEl.innerHTML = '<b style="color:#facc15">AYAGA KALK</b> - Faz 2 suruyor... (' + s.orthoElapsedSec + 'sn / 120sn)'
+        + (s.orthoHr1 >= 0 ? (' | Faz1 ort: ' + s.orthoHr1.toFixed(0) + ' bpm') : '');
+    }
+  } else if (s.orthoHr2 >= 0) {
+    const dBpm = s.orthoHr2 - s.orthoHr1;
+    orthoEl.innerText = 'Son test: Faz1 ' + s.orthoHr1.toFixed(0) + ' bpm -> Faz2 ' + s.orthoHr2.toFixed(0) + ' bpm (fark: '
+      + (dBpm >= 0 ? '+' : '') + dBpm.toFixed(0) + ' bpm)'
+      + (s.orthoRmssd1 >= 0 && s.orthoRmssd2 >= 0 ? (' | RMSSD: ' + s.orthoRmssd1.toFixed(0) + 'ms -> ' + s.orthoRmssd2.toFixed(0) + 'ms') : '');
+  } else {
+    orthoEl.innerText = 'Test baslatilmadi';
   }
 
   // Kalp Hizi Toparlanmasi (HRR) - devam eden veya tamamlanmis son test.
@@ -821,6 +848,16 @@ function startHrrTestNow(slot){
   .catch(e=>{});
 }
 
+function startOrthoTestNow(slot){
+  fetch('/startorthotest?slot=' + slot, { method: 'POST', cache: 'no-store' })
+  .then(r=>r.json())
+  .then(res=>{
+    if (res.error) alert(res.error);
+    else setTimeout(loadData, 200);
+  })
+  .catch(e=>{});
+}
+
 function submitWellnessNow(slot){
   const sel = document.getElementById('playerSelect'+slot);
   const id = sel.value;
@@ -852,6 +889,10 @@ function submitWellnessNow(slot){
 let dashViewMode = localStorage.getItem('toaDashViewMode') || 'ring';
 let lastSlotsGlobal = null;
 let openFocusSlot = null;
+// Oyuncu bazli cok-oturumlu trend (2026-08 ekleme) - Focus Modu acildiginda
+// AYRI bir fetch ile /playertrend'den cekilir (bkz. loadFocusTrend), /data
+// gibi surekli yoklanmaz. playerId degismedikce tekrar fetch edilmez.
+let focusTrendCache = { playerId: null, entries: [] };
 
 function onDashViewModeChange(){
   dashViewMode = document.getElementById('dashViewMode').value;
@@ -1085,6 +1126,10 @@ function renderTeamDetailTable(sorted){
       ? ((s.hrr1 >= 0 ? s.hrr1 + 'bpm' : '--') + ' / ' + (s.hrr2 >= 0 ? s.hrr2 + 'bpm' : '--'))
       : '--';
     const wellTxt = s.wellnessHasData ? (s.wellnessSum + '/50 (' + s.wellnessBand + ')') : '--';
+    const breathTxt = (s.rrSupported && s.fresh && s.breathingRate > 0) ? (s.breathingRate.toFixed(0) + '/dk') : '--';
+    const orthoTxt = s.orthoHr2 >= 0
+      ? (s.orthoHr1.toFixed(0) + '->' + s.orthoHr2.toFixed(0) + 'bpm')
+      : (s.orthoActive ? ('Faz' + s.orthoPhase + '...') : '--');
     // HRV Taban Cizgisi (2026-08 ekleme) - son oturumun RMSSD'sinin oyuncunun
     // KENDI tipik seviyesinden sapmasi, bkz. WebRoutes.cpp/RosterStore.h notu.
     const hrvBaseTxt = s.hrvBaselineReady
@@ -1104,6 +1149,8 @@ function renderTeamDetailTable(sorted){
       <td>${wellTxt}</td>
       <td>${hrvBaseTxt}</td>
       <td><span class="legend-chip" style="display:inline-flex;background:${s.readinessReady ? s.readinessColor : 'var(--muted)'};color:#020617;padding:2px 8px;border-radius:999px;font-size:10px">${readyTxt}</span></td>
+      <td>${breathTxt}</td>
+      <td>${orthoTxt}</td>
     </tr>`;
   }).join('');
 
@@ -1111,7 +1158,7 @@ function renderTeamDetailTable(sorted){
     <thead><tr>
       <th>Oyuncu</th><th>Nabiz</th><th>%HRmax</th><th>Bolge</th><th>Yorgunluk</th>
       <th>ACWR</th><th>Monoton.</th><th>HRV (RMSSD/SDNN/pNN50)</th><th>HRR (1dk/2dk)</th><th>Wellness</th>
-      <th>HRV Taban (sapma)</th><th>Hazir Olma</th>
+      <th>HRV Taban (sapma)</th><th>Hazir Olma</th><th>Solunum</th><th>Ortostatik (F1-&gt;F2)</th>
     </tr></thead>
     <tbody>${rows}</tbody>
   </table></div>`;
@@ -1156,6 +1203,54 @@ function openFocusMode(slot){
   document.getElementById('focusOverlay').style.display = 'block';
   renderFocusOverlay();
 }
+
+// Oyuncu bazli cok-oturumlu trend (2026-08 ekleme) - bkz. focusTrendCache notu.
+function loadFocusTrend(playerId){
+  focusTrendCache = { playerId, entries: [] };  // hemen isaretle: ayni playerId icin tekrar fetch tetiklenmesin
+  fetch('/playertrend?id=' + playerId)
+    .then(r => r.json())
+    .then(data => {
+      focusTrendCache = { playerId, entries: Array.isArray(data) ? data : [] };
+      updateFocusOverlayIfOpen();
+    })
+    .catch(e => {});
+}
+
+function renderFocusTrendSection(playerId){
+  const entries = (focusTrendCache.playerId === playerId) ? focusTrendCache.entries : [];
+  const boxStyle = 'margin-top:14px;background:linear-gradient(180deg,#0e1811,#0b120d);border:1px solid #1c2c21;border-radius:16px;padding:14px';
+
+  if (entries.length < 2) {
+    return `<div style="${boxStyle}">
+      <div style="font-size:11px;color:#8aa08f;font-weight:700">SON OTURUMLAR TRENDI</div>
+      <div style="font-size:12px;color:#8aa08f;margin-top:6px">Henuz yeterli oturum gecmisi yok (trend icin en az 2 tamamlanmis oturum gerekir)</div>
+    </div>`;
+  }
+
+  const fatigueVals = entries.map(e => e.fatigue);
+  const fatiguePts = buildSparklinePoints(fatigueVals, 200, 40, 0, 100);
+  const lastFatigue = fatigueVals[fatigueVals.length - 1];
+
+  const hrvVals = entries.map(e => e.hrvDeviationPct);
+  const hasHrvTrend = hrvVals.some(v => v !== 0);
+  const hrvPts = buildSparklinePoints(hrvVals, 200, 40, -50, 50);
+  const lastHrv = hrvVals[hrvVals.length - 1];
+
+  return `<div style="${boxStyle}">
+    <div style="font-size:11px;color:#8aa08f;font-weight:700">SON ${entries.length} OTURUM &middot; YORGUNLUK TRENDI</div>
+    <svg viewBox="0 0 200 40" style="width:100%;height:36px;margin-top:6px;background:#020617;border-radius:8px;display:block">
+      <polyline points="${fatiguePts}" fill="none" stroke="#facc15" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+    </svg>
+    <div style="font-size:10px;color:#8aa08f;margin-top:4px">Son oturum: ${lastFatigue}/100</div>
+    ${hasHrvTrend ? `
+    <div style="font-size:11px;color:#8aa08f;font-weight:700;margin-top:12px">HRV TABAN SAPMASI TRENDI</div>
+    <svg viewBox="0 0 200 40" style="width:100%;height:36px;margin-top:6px;background:#020617;border-radius:8px;display:block">
+      <line x1="0" y1="20" x2="200" y2="20" stroke="#1c2c21" stroke-width="1"/>
+      <polyline points="${hrvPts}" fill="none" stroke="#60a5fa" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+    </svg>
+    <div style="font-size:10px;color:#8aa08f;margin-top:4px">Son oturum: ${lastHrv >= 0 ? '+' : ''}${lastHrv.toFixed(0)}%</div>` : ''}
+  </div>`;
+}
 function closeFocusMode(){
   openFocusSlot = null;
   document.getElementById('focusOverlay').style.display = 'none';
@@ -1178,6 +1273,13 @@ function renderFocusOverlay(){
   const wellPct = s.wellnessHasData ? Math.max(0, 100 - ((s.wellnessSum - 5) / 45 * 100)) : 0;
   const hrrPct = s.hrr1 >= 0 ? (s.hrr1 / 40) * 100 : 0;
   const hrvTxt = s.rrSupported ? (s.rmssd.toFixed(0) + 'ms &middot; ' + s.sdnn.toFixed(0) + 'ms &middot; %' + s.pnn50.toFixed(0)) : 'Desteklenmiyor';
+  const breathTxt = (s.rrSupported && s.fresh && s.breathingRate > 0) ? (s.breathingRate.toFixed(0) + ' nefes/dk (tahmini)') : '--';
+  const orthoTxt = s.orthoHr2 >= 0
+    ? ('Faz1 ' + s.orthoHr1.toFixed(0) + ' bpm &rarr; Faz2 ' + s.orthoHr2.toFixed(0) + ' bpm')
+    : (s.orthoActive ? ('Faz' + s.orthoPhase + ' suruyor (' + s.orthoElapsedSec + 'sn)') : 'Test baslatilmadi');
+
+  if (focusTrendCache.playerId !== s.playerId) loadFocusTrend(s.playerId);
+  const trendSectionHtml = renderFocusTrendSection(s.playerId);
   // HRV Taban Cizgisi + Composite Hazir Olma Skoru (2026-08 eklemeleri) - bkz.
   // WebRoutes.cpp/PlayerMath.h notu, ikisi de antrenman ONCESI/gecmis oturum
   // verisinden hesaplanir, "su an"ki nabizdan bagimsizdir.
@@ -1216,9 +1318,12 @@ function renderFocusOverlay(){
         <div style="font-size:11px;color:#8aa08f;font-weight:700">HRV (RMSSD &middot; SDNN &middot; pNN50)</div>
         <div style="font-size:15px;font-weight:900;margin-top:4px">${hrvTxt}</div>
         <div style="font-size:11px;color:#8aa08f;margin-top:10px">${hrvBaseTxt}</div>
+        <div style="font-size:11px;color:#8aa08f;margin-top:6px">Solunum (tahmini): ${breathTxt}</div>
+        <div style="font-size:11px;color:#8aa08f;margin-top:6px">Ortostatik test: ${orthoTxt}</div>
         <div style="display:flex;height:12px;border-radius:999px;overflow:hidden;margin-top:12px">${zoneDistBar(s.zoneSec)}</div>
         <div style="font-size:10px;color:#8aa08f;margin-top:6px">Bu oturum bolge dagilimi</div>
       </div>
+      ${trendSectionHtml}
     </div>`;
 }
 

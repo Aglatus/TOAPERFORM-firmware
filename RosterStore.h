@@ -85,6 +85,23 @@ public:
   // O oyuncunun dayIndex gunu icin (varsa) en son kaydedilen anketi doner.
   WellnessEntry todayWellness(int id, long dayIndex) const;
 
+  // ---------------- Oyuncu Bazli Cok-Oturumlu Trend (bkz. Config.h notu) ----------------
+  // Her TAMAMLANMIS oturumun ozetini SESSION_LOG_FILE'a ekler. hrvDeviationPct
+  // hesaplanamadiysa (HRV taban henuz hazir degilse) caller 0 vermeli.
+  void recordSessionLog(int id, long dayIndex, int fatigueScore, float hrvDeviationPct);
+
+  struct SessionLogEntry {
+    long dayIndex = 0;
+    int fatigueScore = 0;
+    float hrvDeviationPct = 0;
+  };
+
+  // O oyuncunun SESSION_LOG_FILE'daki (en fazla maxCount, gercekte MAX_SESSION_LOG_ENTRIES_PER_PLAYER
+  // ile sinirli) oturum kayitlarini outBuf'a ESKIDEN YENIYE sirali yazar, yazilan
+  // adedi doner. Dosya HER ZAMAN eklenme sirayla yazildigi icin (bkz. .cpp) bir
+  // halka tampon yeterli - tum eslesenleri RAM'de biriktirmeye gerek yok.
+  int sessionLogForPlayer(int id, SessionLogEntry* outBuf, int maxCount) const;
+
 private:
   RosterPlayer players_[MAX_ROSTER_PLAYERS];
   int count_ = 0;

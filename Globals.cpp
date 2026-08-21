@@ -42,6 +42,8 @@ bool hrRrSupported[HR_SLOTS];
 float hrRmssdSessionSum[HR_SLOTS];
 int hrRmssdSessionCount[HR_SLOTS];
 
+float breathingRateBpm[HR_SLOTS];
+
 bool hrrActive[HR_SLOTS];
 unsigned long hrrStartMs[HR_SLOTS];
 int hrrHr0[HR_SLOTS];
@@ -54,6 +56,32 @@ void startHrrTest(int slot, int currentBpm) {
   hrrHr0[slot] = currentBpm;
   hrrHr60[slot] = -1;
   hrrHr120[slot] = -1;
+}
+
+bool orthoActive[HR_SLOTS];
+int orthoPhase[HR_SLOTS];
+unsigned long orthoPhaseStartMs[HR_SLOTS];
+float orthoBpmSum[HR_SLOTS];
+int orthoBpmCount[HR_SLOTS];
+float orthoRmssdSum[HR_SLOTS];
+int orthoRmssdCount[HR_SLOTS];
+float orthoHr1[HR_SLOTS];
+float orthoHr2[HR_SLOTS];
+float orthoRmssdResult1[HR_SLOTS];
+float orthoRmssdResult2[HR_SLOTS];
+
+void startOrthoTest(int slot) {
+  orthoActive[slot] = true;
+  orthoPhase[slot] = 1;
+  orthoPhaseStartMs[slot] = millis();
+  orthoBpmSum[slot] = 0;
+  orthoBpmCount[slot] = 0;
+  orthoRmssdSum[slot] = 0;
+  orthoRmssdCount[slot] = 0;
+  orthoHr1[slot] = -1;
+  orthoHr2[slot] = -1;
+  orthoRmssdResult1[slot] = -1;
+  orthoRmssdResult2[slot] = -1;
 }
 
 unsigned long lastPeerBroadcastMs = 0;
@@ -113,6 +141,17 @@ void resetSession() {
 
     hrRmssdSessionSum[i] = 0;
     hrRmssdSessionCount[i] = 0;
+
+    orthoActive[i] = false;
+    orthoPhase[i] = 0;
+    orthoBpmSum[i] = 0;
+    orthoBpmCount[i] = 0;
+    orthoRmssdSum[i] = 0;
+    orthoRmssdCount[i] = 0;
+    orthoHr1[i] = -1;
+    orthoHr2[i] = -1;
+    orthoRmssdResult1[i] = -1;
+    orthoRmssdResult2[i] = -1;
   }
 
   sessionStartMs = millis();

@@ -189,6 +189,81 @@ RosterStore::WellnessEntry RosterStore::todayWellness(int id, long dayIndex) con
   return out;
 }
 
+// SESSION_LOG_FILE satir bicimi: playerId,dayIndex,fatigueScore,hrvDeviationPct
+// - TUM oyuncular icin ORTAK tek dosya (LOADS_FILE ile ayni desen).
+void RosterStore::recordSessionLog(int id, long dayIndex, int fatigueScore, float hrvDeviationPct) {
+  File f = LittleFS.open(SESSION_LOG_FILE, "a");
+  if (f) {
+    char buf[48];
+    snprintf(buf, sizeof(buf), "%d,%ld,%d,%.1f", id, dayIndex, fatigueScore, hrvDeviationPct);
+    f.println(buf);
+    f.close();
+  }
+
+  // SESSION_LOG_MAX_LOOKBACK_DAYS'ten eski kayitlari buda - dosya sinirsiz
+  // buyumesin (bkz. recordDailyLoad ile ayni desen).
+  File src = LittleFS.open(SESSION_LOG_FILE, "r");
+  if (!src) return;
+
+  File tmp = LittleFS.open("/sessionlog.tmp", "w");
+  if (!tmp) { src.close(); return; }
+
+  char lineBuf[48];
+  long cutoff = dayIndex - SESSION_LOG_MAX_LOOKBACK_DAYS;
+  while (readLineToBuffer(src, lineBuf, sizeof(lineBuf))) {
+    if (strlen(lineBuf) == 0) continue;
+    int lineId, lineFatigue;
+    long lineDay;
+    float lineHrvDev;
+    if (sscanf(lineBuf, "%d,%ld,%d,%f", &lineId, &lineDay, &lineFatigue, &lineHrvDev) != 4) continue;
+    if (lineDay < cutoff) continue;
+    tmp.println(lineBuf);
+  }
+  src.close();
+  tmp.close();
+
+  LittleFS.remove(SESSION_LOG_FILE);
+  LittleFS.rename("/sessionlog.tmp", SESSION_LOG_FILE);
+}
+
+int RosterStore::sessionLogForPlayer(int id, SessionLogEntry* outBuf, int maxCount) const {
+  // Dosya HER ZAMAN eklenme (append) sirayla yazilir - yani bir playerId'ye
+  // ait satirlar kendi aralarinda zaten KRONOLOJIK sirali. Bu yuzden son
+  // maxCount taneyi tutmak icin sabit boyutlu bir halka tampon yeterli.
+  SessionLogEntry ring[MAX_SESSION_LOG_ENTRIES_PER_PLAYER];
+  int cap = (maxCount < MAX_SESSION_LOG_ENTRIES_PER_PLAYER) ? maxCount : MAX_SESSION_LOG_ENTRIES_PER_PLAYER;
+  if (cap <= 0) return 0;
+
+  int count = 0;
+  int head = 0;
+
+  File f = LittleFS.open(SESSION_LOG_FILE, "r");
+  if (f) {
+    char lineBuf[48];
+    while (readLineToBuffer(f, lineBuf, sizeof(lineBuf))) {
+      if (strlen(lineBuf) == 0) continue;
+      int lineId, lineFatigue;
+      long lineDay;
+      float lineHrvDev;
+      if (sscanf(lineBuf, "%d,%ld,%d,%f", &lineId, &lineDay, &lineFatigue, &lineHrvDev) != 4) continue;
+      if (lineId != id) continue;
+
+      ring[head].dayIndex = lineDay;
+      ring[head].fatigueScore = lineFatigue;
+      ring[head].hrvDeviationPct = lineHrvDev;
+      head = (head + 1) % cap;
+      if (count < cap) count++;
+    }
+    f.close();
+  }
+
+  int oldestIdx = (count < cap) ? 0 : head;
+  for (int i = 0; i < count; i++) {
+    outBuf[i] = ring[(oldestIdx + i) % cap];
+  }
+  return count;
+}
+
 void RosterStore::load() {
   count_ = 0;
   nextId_ = 1;

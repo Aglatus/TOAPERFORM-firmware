@@ -177,6 +177,39 @@ int calculateHrrDrop(int hr0, int hrAtMark) {
   return hr0 - hrAtMark;
 }
 
+float calculateOrthoDelta(float avg1, float avg2) {
+  if (avg1 < 0 || avg2 < 0) return 0;
+  return avg2 - avg1;
+}
+
+float estimateBreathingRate(const uint16_t* rrMs, int count) {
+  if (count < BREATHING_MIN_RR_SAMPLES) return 0;
+
+  float mean = 0;
+  long totalMs = 0;
+  for (int i = 0; i < count; i++) {
+    mean += rrMs[i];
+    totalMs += rrMs[i];
+  }
+  mean /= count;
+
+  int risingCrossings = 0;
+  bool wasBelow = (rrMs[0] < mean);
+  for (int i = 1; i < count; i++) {
+    bool isBelow = (rrMs[i] < mean);
+    if (wasBelow && !isBelow) risingCrossings++;
+    wasBelow = isBelow;
+  }
+
+  if (risingCrossings < 2 || totalMs <= 0) return 0;
+
+  float totalMin = totalMs / 1000.0f / 60.0f;
+  float bpm = risingCrossings / totalMin;
+
+  if (bpm < BREATHING_MIN_VALID_BPM || bpm > BREATHING_MAX_VALID_BPM) return 0;
+  return bpm;
+}
+
 float updateHrvBaselineEwma(float existingBaseline, int existingSessions, float sessionAvgRmssd) {
   if (sessionAvgRmssd <= 0) return existingBaseline;
   if (existingSessions <= 0) return sessionAvgRmssd;

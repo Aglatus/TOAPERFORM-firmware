@@ -122,6 +122,36 @@ static const int HR_RR_BUFFER_SIZE = 40;  // slot basina tutulan son RR degeri s
 static const unsigned long HRR_MARK_1_MS = 60000;   // 1. dakika
 static const unsigned long HRR_MARK_2_MS = 120000;  // 2. dakika
 
+// ---------------- Ortostatik Toparlanma Testi (Polar Recovery Pro tarzi) ----------------
+// 2026-08 (ekleme): HRR ile AYNI felsefe - manuel tetiklenir, HAM deger (bpm/ms)
+// gosterilir, klinik bir skor/risk bandi URETILMEZ (bkz. yukaridaki HRR notu -
+// Cole ve ark. esikleri genel populasyonda kurulmus, sporcuya dogrudan
+// tasinamaz; ortostatik testin kendi standart bir "iyi/kotu" esigi spor
+// bilimi literaturunde HENUZ net degil, bu yuzden burada da sadece HAM
+// deger/fark sunulur). HRR'nin aksine cihaz "efor bitti" gibi bir ani
+// algilamiyor - iki faz (Faz1: yatarken/otururken, Faz2: ayaktayken) SABIT
+// SURELI ve OTOMATIK zamanlanir. Panel faz gecisinde "AYAGA KALK" uyarisi
+// gosterir - oyuncu/koc buna gore hareket eder, cihaz fiziksel duruma
+// (yatik/ayakta) hic bakmaz, sadece zamanlayici kullanir.
+static const unsigned long ORTHO_PHASE_MS = 120000;  // her faz (yatarken/ayaktayken) 2 dakika
+
+// ---------------- Solunum Hizi Tahmini (RR-interval osilasyonu) ----------------
+// 2026-08 (ekleme): Polar/Firstbeat'in Training Load raporlarinda kullandigi
+// teknige benzer sekilde, RR-interval dizisindeki solunum kaynakli (RSA -
+// respiratuar sinus aritmisi) salinimdan nefes/dakika tahmin edilir - ek
+// donanim gerekmez, mevcut RR-interval tamponundan (bkz. HR_RR_BUFFER_SIZE)
+// turetilir. Yontem: RR dizisinin ortalamasini YUKARI kesen (rising
+// mean-crossing) sayisi / toplam sure - FFT gerektirmeyen, hafif bir yontem
+// (bkz. PlayerMath::calculateHrv ile ayni "FFT yok" tercihi). ONEMLI SINIR:
+// RSA yogun egzersiz sirasinda solunum/efor tarafindan bastirilir - bu tahmin
+// en cok DINLENIK/hafif tempoda anlamlidir, yuksek nabizda guvenilirligi
+// dusuktur (panelde bu belirtilmeli, "kesin" bir olcum gibi sunulmamali).
+// Makul araligin (asagida) DISINDA cikan sonuc gurultu sayilir ve 0 (gecersiz)
+// doner.
+static const int BREATHING_MIN_RR_SAMPLES = 10;  // bu kadar RR ornegi olmadan tahmin yapilmaz
+static const float BREATHING_MIN_VALID_BPM = 6.0f;   // bu altindaki sonuc gurultu sayilir
+static const float BREATHING_MAX_VALID_BPM = 70.0f;  // bu ustundeki sonuc gurultu sayilir
+
 // ---------------- Nabiz - Coklu Bant Destegi ----------------
 // Ayni ESP32 en fazla HR_DEVICE_SLOTS (=HeartRateHardware::SLOT_COUNT, bkz.
 // HeartRateHardware.h - IKI SABIT AYNI KALMALI) nabiz sensorune AYNI ANDA
@@ -286,3 +316,13 @@ static const int HRV_BASELINE_MIN_SESSIONS = 3;      // bu kadar oturumdan once 
 // en az 2 bilesen mevcut degilse "Yetersiz veri" doner.
 static const int READINESS_GOOD_MIN = 70;      // bu ve uzeri "HAZIR"
 static const int READINESS_MODERATE_MIN = 45;  // bu ve uzeri (70'in altinda) "ORTA", altı "DIKKAT"
+
+// ---------------- Oyuncu Bazli Cok-Oturumlu Trend ----------------
+// 2026-08 (ekleme): SeasonStore'daki "Bant 1" gecmisinden (history.jsonl)
+// BAGIMSIZ - roster'a atanmis HER oyuncu icin, her TAMAMLANMIS oturumun
+// ozetini (yorgunluk skoru + varsa HRV taban sapmasi) ayri bir dosyaya
+// ekler. Focus Modu'nda "son N oturum" trend grafigi icin (bkz.
+// RosterStore::recordSessionLog/sessionLogForPlayer).
+static const char* const SESSION_LOG_FILE = "/sessionlog.dat";  // CSV: playerId,dayIndex,fatigueScore,hrvDeviationPct
+static const int MAX_SESSION_LOG_ENTRIES_PER_PLAYER = 20;  // trend grafiginde gosterilen son oturum sayisi
+static const long SESSION_LOG_MAX_LOOKBACK_DAYS = 120;      // dosya budama siniri (LOADS_FILE ile ayni desen)

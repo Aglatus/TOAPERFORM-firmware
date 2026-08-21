@@ -87,6 +87,12 @@ extern bool hrRrSupported[HR_SLOTS];
 extern float hrRmssdSessionSum[HR_SLOTS];
 extern int hrRmssdSessionCount[HR_SLOTS];
 
+// ---------------- Solunum Hizi Tahmini (2026-08 ekleme, bkz. Config.h) ----------------
+// Diger HRV alanlari gibi baglanti/oturumdan bagimsiz, salt donanimdan gelen
+// bir deger - her 1Hz turda hesaplanir. 0 = gecerli tahmin yok (bkz.
+// PlayerMath::estimateBreathingRate).
+extern float breathingRateBpm[HR_SLOTS];
+
 // ---------------- Kalp Hizi Toparlanmasi (HRR) testi (bkz. Config.h) ----------------
 // Panelden manuel tetiklenir - "efor bitti" anini cihaz kendisi algilayamaz.
 extern bool hrrActive[HR_SLOTS];
@@ -99,6 +105,34 @@ extern int hrrHr120[HR_SLOTS];  // -1 = 2. dakika henuz olculmedi
 // sayaci baslatir. hasFreshSignal false ise (guvenilir bpm yoksa) sessizce
 // hicbir sey yapmaz (caller - WebRoutes - bunu kontrol etmeli).
 void startHrrTest(int slot, int currentBpm);
+
+// ---------------- Ortostatik Toparlanma Testi (2026-08 ekleme, bkz. Config.h) ----------------
+// Panelden manuel tetiklenir ("Testi Baslat") - Faz1 (yatarken/otururken,
+// ORTHO_PHASE_MS sureyle) ve Faz2 (ayaktayken, ayni sure) SIRAYLA otomatik
+// zamanlanir (HRR'nin aksine "efor bitti" gibi bir ani algilamak gerekmiyor,
+// sadece sabit sureli iki pencere var). Panel faz gecisinde "AYAGA KALK"
+// uyarisi gosterir - oyuncu/koc buna gore hareket eder, cihaz bunu algilamaz.
+extern bool orthoActive[HR_SLOTS];
+extern int orthoPhase[HR_SLOTS];             // 0=inactive, 1=Faz1 (yatarken), 2=Faz2 (ayaktayken)
+extern unsigned long orthoPhaseStartMs[HR_SLOTS];
+
+// O ANKI fazin biriktirme sayaclari - faz degisince (veya test bitince) sifirlanir.
+extern float orthoBpmSum[HR_SLOTS];
+extern int orthoBpmCount[HR_SLOTS];
+extern float orthoRmssdSum[HR_SLOTS];
+extern int orthoRmssdCount[HR_SLOTS];
+
+// Test SONUCLARI - tamamlanan fazlarin ortalamalari, yeni test baslayana/
+// resetSession'a kadar donuk kalir. -1 = o faz hic olculmedi/tamamlanmadi.
+extern float orthoHr1[HR_SLOTS];
+extern float orthoHr2[HR_SLOTS];
+extern float orthoRmssdResult1[HR_SLOTS];
+extern float orthoRmssdResult2[HR_SLOTS];
+
+// O anki fazi Faz1 (yatarken) olarak baslatir - Faz2'ye ORTHO_PHASE_MS sonra
+// otomatik gecer (bkz. TOAPERFORM.ino). hasFreshSignal false ise (guvenilir
+// bpm yoksa) caller (WebRoutes) baslatmamali - HRR ile ayni desen.
+void startOrthoTest(int slot);
 
 extern unsigned long lastPeerBroadcastMs;  // ESP-NOW takim yayini icin son yayin zamani
 

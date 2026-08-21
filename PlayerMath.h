@@ -102,6 +102,13 @@ struct HrvMetrics {
 // tum alanlar 0 doner.
 HrvMetrics calculateHrv(const uint16_t* rrMs, int count);
 
+// ---------------- Solunum Hizi Tahmini (RR-interval osilasyonu) ----------------
+// 2026-08 (ekleme, bkz. Config.h BREATHING notu) - RR dizisinin ortalamasini
+// YUKARI kesen (rising mean-crossing) sayisindan nefes/dakika tahmin eder.
+// count < BREATHING_MIN_RR_SAMPLES ise ya da sonuc makul araligin (bkz.
+// Config.h BREATHING_MIN/MAX_VALID_BPM) disindaysa 0 (gecersiz) doner.
+float estimateBreathingRate(const uint16_t* rrMs, int count);
+
 // ---------------- Kalp Hizi Toparlanmasi (HRR) ----------------
 // Kaynak: Cole CR ve ark., "Heart-rate recovery immediately after exercise as
 // a predictor of mortality", N Engl J Med 2000 - genel populasyonda dusuk HRR1
@@ -114,6 +121,14 @@ HrvMetrics calculateHrv(const uint16_t* rrMs, int count);
 // olculen bpm (henuz olculmediyse -1 verilmeli). Donus: dusus miktari (bpm),
 // hrAtMark < 0 ise -1.
 int calculateHrrDrop(int hr0, int hrAtMark);
+
+// ---------------- Ortostatik Toparlanma Testi (Faz1->Faz2 HAM fark) ----------------
+// 2026-08 (ekleme, bkz. Config.h ORTHO notu). avg1/avg2: ilgili fazin
+// ortalama degeri (bpm ya da ms) - o faz hic olculmediyse caller -1 vermeli.
+// Donus: avg2 - avg1 (HAM fark, risk bandi YOK - HRR ile ayni felsefe). avg1
+// veya avg2 negatifse (o faz olculmediyse) 0 doner - "fark yok" ile "fark
+// olculemedi" caller tarafinda avg1/avg2'nin kendisine bakilarak ayirt edilmeli.
+float calculateOrthoDelta(float avg1, float avg2);
 
 // ---------------- HRV Taban Cizgisi (oturum-ici RMSSD, EWMA) ----------------
 // 2026-08 (ekleme, bkz. Config.h HRV_BASELINE_LAMBDA/MIN_SESSIONS notu): sadece

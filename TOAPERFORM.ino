@@ -151,6 +151,47 @@ void loop() {
           hrRmssdSessionSum[i] += hrv.rmssdMs;
           hrRmssdSessionCount[i]++;
         }
+
+        // Solunum Hizi Tahmini (2026-08 ekleme, bkz. Config.h/PlayerMath.h
+        // BREATHING notu) - ayni RR tamponundan, ek bir okuma gerekmeden.
+        breathingRateBpm[i] = PlayerMath::estimateBreathingRate(rrBuf, rrCount);
+      }
+
+      // Ortostatik Toparlanma Testi (2026-08 ekleme, bkz. Config.h/Globals.h
+      // ORTHO notu) - panelden manuel baslatilir, iki faz (yatarken/ayaktayken)
+      // SABIT SURELI ve otomatik ilerler. Guvenilir bpm/RMSSD sadece o an
+      // gecerliyse fazin ortalamasina katilir (HRR'deki "sadece fresh sinyalde
+      // olcum yapilir" ilkesiyle ayni).
+      if (orthoActive[i]) {
+        unsigned long orthoElapsed = now - orthoPhaseStartMs[i];
+
+        if (heartRateSignalFresh[i]) {
+          orthoBpmSum[i] += heartRateBpm[i];
+          orthoBpmCount[i]++;
+        }
+        if (hrRrSupported[i] && hrRmssdMs[i] > 0) {
+          orthoRmssdSum[i] += hrRmssdMs[i];
+          orthoRmssdCount[i]++;
+        }
+
+        if (orthoElapsed >= ORTHO_PHASE_MS) {
+          if (orthoPhase[i] == 1) {
+            orthoHr1[i] = orthoBpmCount[i] > 0 ? (orthoBpmSum[i] / orthoBpmCount[i]) : -1;
+            orthoRmssdResult1[i] = orthoRmssdCount[i] > 0 ? (orthoRmssdSum[i] / orthoRmssdCount[i]) : -1;
+
+            orthoPhase[i] = 2;
+            orthoPhaseStartMs[i] = now;
+            orthoBpmSum[i] = 0;
+            orthoBpmCount[i] = 0;
+            orthoRmssdSum[i] = 0;
+            orthoRmssdCount[i] = 0;
+          } else if (orthoPhase[i] == 2) {
+            orthoHr2[i] = orthoBpmCount[i] > 0 ? (orthoBpmSum[i] / orthoBpmCount[i]) : -1;
+            orthoRmssdResult2[i] = orthoRmssdCount[i] > 0 ? (orthoRmssdSum[i] / orthoRmssdCount[i]) : -1;
+
+            orthoActive[i] = false;  // test tamamlandi
+          }
+        }
       }
 
       // Kalp Hizi Toparlanmasi (HRR) testi - panelden manuel baslatilir (bkz.

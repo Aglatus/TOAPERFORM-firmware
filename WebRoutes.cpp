@@ -50,10 +50,10 @@ static void handleData() {
   char timeBuf[16];
   formatTime(sessionSeconds, timeBuf, sizeof(timeBuf));
 
-  // ~800 bayt/slot (isim+uyari+ongoru+ACWR+HRV+HRR+wellness+HRV taban+readiness
-  // metinleri dahil en kotu durum) x HR_SLOTS + sarici icin genis bir pay -
-  // bkz. SLOT_COUNT (Config.h/HeartRateHardware.h).
-  static char json[HR_SLOTS * 900 + 64];
+  // ~950 bayt/slot (isim+uyari+ongoru+ACWR+HRV+HRR+wellness+HRV taban+readiness+
+  // solunum+ortostatik metinleri dahil en kotu durum) x HR_SLOTS + sarici icin
+  // genis bir pay - bkz. SLOT_COUNT (Config.h/HeartRateHardware.h).
+  static char json[HR_SLOTS * 1050 + 64];
   int off = 0;
   off += snprintf(json + off, sizeof(json) - off, "{\"trainingTime\":\"%s\",\"slots\":[", timeBuf);
 
@@ -91,6 +91,10 @@ static void handleData() {
     int hrr1 = PlayerMath::calculateHrrDrop(hrrHr0[i], hrrHr60[i]);
     int hrr2 = PlayerMath::calculateHrrDrop(hrrHr0[i], hrrHr120[i]);
     unsigned long hrrElapsedSec = hrrActive[i] ? (now - hrrStartMs[i]) / 1000UL : 0;
+
+    // Ortostatik Toparlanma Testi: devam eden fazin gecen suresi (bkz.
+    // Config.h/Globals.h ORTHO notu - iki fazli, sabit sureli, otomatik).
+    unsigned long orthoElapsedSec = orthoActive[i] ? (now - orthoPhaseStartMs[i]) / 1000UL : 0;
 
     // Wellness anketi: bkz. Config.h "Gunluk Wellness Anketi" notu - panelden
     // antrenman oncesi elle doldurulur, nabizdan bagimsiz.
@@ -130,11 +134,13 @@ static void handleData() {
       "\"pctMax\":%.0f,\"zone\":%d,\"zoneSec\":[%lu,%lu,%lu,%lu,%lu],"
       "\"fatigue\":%d,\"riskStatus\":\"%s\",\"riskColor\":\"%s\",\"warning\":\"%s\",\"trendWarning\":\"%s\","
       "\"acwr\":%.2f,\"acwrBand\":\"%s\",\"acwrDays\":%d,\"monotony\":%.2f,\"monotonyBand\":\"%s\","
-      "\"rrSupported\":%s,\"rmssd\":%.1f,\"sdnn\":%.1f,\"pnn50\":%.1f,"
+      "\"rrSupported\":%s,\"rmssd\":%.1f,\"sdnn\":%.1f,\"pnn50\":%.1f,\"breathingRate\":%.1f,"
       "\"hrrActive\":%s,\"hrrElapsedSec\":%lu,\"hrrHr0\":%d,\"hrr1\":%d,\"hrr2\":%d,"
       "\"wellnessHasData\":%s,\"wellnessSum\":%d,\"wellnessBand\":\"%s\","
       "\"hrvBaselineReady\":%s,\"hrvBaselineRmssd\":%.1f,\"hrvDeviationPct\":%.1f,"
-      "\"readinessReady\":%s,\"readinessScore\":%d,\"readinessBand\":\"%s\",\"readinessColor\":\"%s\"}",
+      "\"readinessReady\":%s,\"readinessScore\":%d,\"readinessBand\":\"%s\",\"readinessColor\":\"%s\","
+      "\"orthoActive\":%s,\"orthoPhase\":%d,\"orthoElapsedSec\":%lu,"
+      "\"orthoHr1\":%.0f,\"orthoHr2\":%.0f,\"orthoRmssd1\":%.1f,\"orthoRmssd2\":%.1f}",
       i == 0 ? "" : ",",
       i, heartRateHardware.label(i), enabled ? "true" : "false",
       slotPlayerId[i], hasPlayer ? slotPlayerName[i] : "", baselineReady ? "true" : "false",
@@ -144,11 +150,13 @@ static void handleData() {
       hrZoneSeconds[i][0], hrZoneSeconds[i][1], hrZoneSeconds[i][2], hrZoneSeconds[i][3], hrZoneSeconds[i][4],
       fatigueScore[i], riskStatus[i], riskColor[i], lastWarning[i], trendWarning,
       acwr.acwr, acwr.band, acwr.daysWithData, acwr.monotony, acwr.monotonyBand,
-      hrRrSupported[i] ? "true" : "false", hrRmssdMs[i], hrSdnnMs[i], hrPnn50[i],
+      hrRrSupported[i] ? "true" : "false", hrRmssdMs[i], hrSdnnMs[i], hrPnn50[i], breathingRateBpm[i],
       hrrActive[i] ? "true" : "false", hrrElapsedSec, hrrHr0[i], hrr1, hrr2,
       wellness.hasData ? "true" : "false", wellness.sum, wellness.band,
       hrvBaselineReady ? "true" : "false", hrvBaselineRmssd, hrvDeviationPct,
-      readiness.hasEnoughData ? "true" : "false", readiness.score, readiness.band, readiness.colorHex
+      readiness.hasEnoughData ? "true" : "false", readiness.score, readiness.band, readiness.colorHex,
+      orthoActive[i] ? "true" : "false", orthoPhase[i], orthoElapsedSec,
+      orthoHr1[i], orthoHr2[i], orthoRmssdResult1[i], orthoRmssdResult2[i]
     );
   }
 
@@ -170,6 +178,38 @@ static void handleRosterList() {
     off += snprintf(json + off, sizeof(json) - off,
       "%s{\"id\":%d,\"name\":\"%s\",\"maxHrEver\":%.0f}",
       i == 0 ? "" : ",", p.id, p.name, p.maxHrEver);
+  }
+  off += snprintf(json + off, sizeof(json) - off, "]");
+
+  sendNoCacheHeaders();
+  server.send(200, "application/json", json);
+}
+
+// id=<roster id> - o oyuncunun son MAX_SESSION_LOG_ENTRIES_PER_PLAYER
+// oturumunun ozetini (yorgunluk skoru + HRV taban sapmasi) doner, ESKIDEN
+// YENIYE sirali (bkz. RosterStore::sessionLogForPlayer). Focus Modu acilinca
+// AYRI bir fetch ile cekilir - /data gibi surekli yoklanmiyor.
+static void handlePlayerTrend() {
+  if (!server.hasArg("id")) {
+    server.send(400, "application/json", "{\"error\":\"id gerekli\"}");
+    return;
+  }
+  int id = server.arg("id").toInt();
+  if (rosterStore.findIndexById(id) < 0) {
+    server.send(400, "application/json", "{\"error\":\"oyuncu bulunamadi\"}");
+    return;
+  }
+
+  RosterStore::SessionLogEntry entries[MAX_SESSION_LOG_ENTRIES_PER_PLAYER];
+  int n = rosterStore.sessionLogForPlayer(id, entries, MAX_SESSION_LOG_ENTRIES_PER_PLAYER);
+
+  static char json[MAX_SESSION_LOG_ENTRIES_PER_PLAYER * 48 + 20];
+  int off = 0;
+  off += snprintf(json + off, sizeof(json) - off, "[");
+  for (int i = 0; i < n; i++) {
+    off += snprintf(json + off, sizeof(json) - off,
+      "%s{\"dayIndex\":%ld,\"fatigue\":%d,\"hrvDeviationPct\":%.1f}",
+      i == 0 ? "" : ",", entries[i].dayIndex, entries[i].fatigueScore, entries[i].hrvDeviationPct);
   }
   off += snprintf(json + off, sizeof(json) - off, "]");
 
@@ -248,6 +288,34 @@ static void handleStartHrrTest() {
   }
 
   startHrrTest(slot, heartRateBpm[slot]);
+
+  sendNoCacheHeaders();
+  server.send(200, "application/json", "{\"started\":true}");
+}
+
+// =====================================================
+// Ortostatik Toparlanma Testi
+// =====================================================
+// slot=<0..HR_SLOTS-1> - Faz1'i (yatarken/otururken) baslatir, Faz2'ye
+// (ayaktayken) ORTHO_PHASE_MS sonra otomatik gecer (bkz. Globals.h/
+// TOAPERFORM.ino ORTHO notu - HRR'nin aksine "efor bitti" gibi bir ani
+// algilamiyor, sadece zamanlayici kullanir).
+static void handleStartOrthoTest() {
+  if (!server.hasArg("slot")) {
+    server.send(400, "application/json", "{\"error\":\"slot gerekli\"}");
+    return;
+  }
+  int slot = server.arg("slot").toInt();
+  if (slot < 0 || slot >= HR_SLOTS) {
+    server.send(400, "application/json", "{\"error\":\"gecersiz slot\"}");
+    return;
+  }
+  if (!heartRateSignalFresh[slot]) {
+    server.send(400, "application/json", "{\"error\":\"guvenilir nabiz sinyali yok\"}");
+    return;
+  }
+
+  startOrthoTest(slot);
 
   sendNoCacheHeaders();
   server.send(200, "application/json", "{\"started\":true}");
@@ -344,6 +412,21 @@ static void handleReset() {
       // gondermediyse) gun-indeksi bilinmez, atlanir.
       if (sessionTs > 0) {
         rosterStore.recordDailyLoad(slotPlayerId[i], (long)(sessionTs / 86400UL), sessionLoad * loadMultiplier);
+
+        // Oyuncu Bazli Cok-Oturumlu Trend (2026-08 ekleme): bu oturumun ozetini
+        // (yorgunluk skoru + varsa HRV taban sapmasi) SESSION_LOG_FILE'a ekler -
+        // Focus Modu'ndaki trend grafigi icin (bkz. RosterStore::recordSessionLog).
+        // HRV taban henuz hazir degilse (yeterli oturum birikmediyse) 0 yazilir -
+        // /playertrend tuketicisi bunu "veri yok" olarak yorumlamali.
+        float hrvDevForLog = 0;
+        int rIdx = rosterStore.findIndexById(slotPlayerId[i]);
+        if (rIdx >= 0) {
+          const RosterPlayer& rp = rosterStore.playerAt(rIdx);
+          if (rp.hrvBaselineSessions >= HRV_BASELINE_MIN_SESSIONS && rp.hrvBaselineRmssd > 0 && rp.hrvLastSessionRmssd > 0) {
+            hrvDevForLog = ((rp.hrvLastSessionRmssd - rp.hrvBaselineRmssd) / rp.hrvBaselineRmssd) * 100.0f;
+          }
+        }
+        rosterStore.recordSessionLog(slotPlayerId[i], (long)(sessionTs / 86400UL), fatigueScore[i], hrvDevForLog);
       }
     }
   }
@@ -503,9 +586,11 @@ void registerWebRoutes() {
   server.on("/data", handleData);
   server.on("/gpsconfig", handleGpsConfig);
   server.on("/roster", handleRosterList);
+  server.on("/playertrend", handlePlayerTrend);
   server.on("/addplayer", HTTP_POST, handleAddPlayer);
   server.on("/assignslot", HTTP_POST, handleAssignSlot);
   server.on("/starthrrtest", HTTP_POST, handleStartHrrTest);
+  server.on("/startorthotest", HTTP_POST, handleStartOrthoTest);
   server.on("/wellness", HTTP_POST, handleWellness);
   server.on("/reset", handleReset);
   server.on("/resetseason", handleResetSeason);
